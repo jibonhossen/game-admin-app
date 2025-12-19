@@ -49,7 +49,7 @@ export default function RootLayout() {
           contentStyle: { backgroundColor: COLORS.background },
         }}
       >
-        <Stack.Screen name="index" options={{ title: 'Admin Dashboard', headerLargeTitle: true }} />
+        <Stack.Screen name="index" options={{ title: 'Admin Dashboard' }} />
         <Stack.Screen name="create-match" options={{ title: 'Create Match', presentation: 'modal' }} />
         <Stack.Screen name="match/[id]" options={{ title: 'Match Details' }} />
         <Stack.Screen name="distribute/[id]" options={{ title: 'Distribute Prizes' }} />

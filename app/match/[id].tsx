@@ -17,6 +17,7 @@ export default function MatchDetails() {
     const [customId, setCustomId] = useState('');
     const [password, setPassword] = useState('');
     const [updating, setUpdating] = useState(false);
+    const [changingStatus, setChangingStatus] = useState(false);
 
     useEffect(() => {
         fetchData();
@@ -26,7 +27,7 @@ export default function MatchDetails() {
         try {
             setLoading(true);
             const matchData = await matchApi.getAllMatches();
-            const found = matchData.find((m: any) => m._id === id);
+            const found = matchData.find((m: any) => m.id === id);
 
             if (found) {
                 setMatch(found);
@@ -56,6 +57,36 @@ export default function MatchDetails() {
         }
     };
 
+    const handleStatusChange = async (newStatus: 'active' | 'closed') => {
+        const statusLabels = { inactive: 'Inactive', active: 'Active', closed: 'Closed' };
+        const currentLabel = statusLabels[match.adminStatus as keyof typeof statusLabels] || 'Inactive';
+        const newLabel = statusLabels[newStatus];
+
+        Alert.alert(
+            'Change Status',
+            `Are you sure you want to change status from "${currentLabel}" to "${newLabel}"? This cannot be undone.`,
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Confirm',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            setChangingStatus(true);
+                            const result = await matchApi.changeAdminStatus(id as string, newStatus);
+                            Alert.alert('Success', result.message);
+                            setMatch(result.match);
+                        } catch (error: any) {
+                            Alert.alert('Error', error.response?.data?.error || 'Failed to change status');
+                        } finally {
+                            setChangingStatus(false);
+                        }
+                    }
+                }
+            ]
+        );
+    };
+
     if (loading) {
         return (
             <View style={styles.center}>
@@ -80,9 +111,6 @@ export default function MatchDetails() {
             colors={[COLORS.primaryDark, COLORS.background]}
             style={styles.headerGradient}
         >
-            <TouchableOpacity onPress={() => router.back()} style={styles.headerBackBtn}>
-                <Ionicons name="arrow-back" size={24} color={COLORS.white} />
-            </TouchableOpacity>
             <View style={styles.headerContent}>
                 <View style={styles.badgeContainer}>
                     <View style={[styles.badge, match.status === 'Open' ? styles.badgeOpen : styles.badgeClosed]}>
@@ -460,5 +488,68 @@ const styles = StyleSheet.create({
         color: COLORS.textSecondary,
         textAlign: 'center',
         padding: 20,
-    }
+    },
+    // Admin Status Control Styles
+    statusRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 12,
+    },
+    currentStatus: {
+        flex: 1,
+    },
+    statusBadge: {
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 8,
+        alignSelf: 'flex-start',
+        marginTop: 6,
+    },
+    statusActive: {
+        backgroundColor: COLORS.success,
+    },
+    statusClosed: {
+        backgroundColor: COLORS.error,
+    },
+    statusInactive: {
+        backgroundColor: COLORS.textSecondary,
+    },
+    statusBadgeText: {
+        color: 'white',
+        fontWeight: 'bold',
+        fontSize: 12,
+    },
+    statusActions: {
+        flexDirection: 'row',
+        gap: 8,
+    },
+    statusButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderRadius: 8,
+        gap: 6,
+    },
+    activateButton: {
+        backgroundColor: COLORS.success,
+    },
+    closeButton: {
+        backgroundColor: COLORS.error,
+    },
+    statusButtonText: {
+        color: 'white',
+        fontWeight: 'bold',
+        fontSize: 14,
+    },
+    closedNote: {
+        color: COLORS.textSecondary,
+        fontStyle: 'italic',
+    },
+    statusHint: {
+        color: COLORS.textSecondary,
+        fontSize: 12,
+        fontStyle: 'italic',
+    },
 });

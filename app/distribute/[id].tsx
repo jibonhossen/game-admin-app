@@ -79,9 +79,6 @@ export default function DistributePrizes() {
             colors={[COLORS.secondary, COLORS.background]}
             style={styles.headerGradient}
         >
-            <TouchableOpacity onPress={() => router.back()} style={styles.headerBackBtn}>
-                <Ionicons name="arrow-back" size={24} color={COLORS.white} />
-            </TouchableOpacity>
             <View style={styles.headerContent}>
                 <Ionicons name="gift-outline" size={40} color={COLORS.white} style={{ marginBottom: 10 }} />
                 <Text style={styles.title}>Distribute Prizes</Text>

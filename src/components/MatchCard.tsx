@@ -1,25 +1,76 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Switch, Alert, ActivityIndicator } from 'react-native';
 import { COLORS, SPACING, FONTS } from '../constants/theme';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { matchApi } from '../services/api';
 
 interface MatchCardProps {
     match: any;
+    onUpdate?: () => void;
 }
 
-export const MatchCard: React.FC<MatchCardProps> = ({ match }) => {
+export const MatchCard: React.FC<MatchCardProps> = ({ match, onUpdate }) => {
     const router = useRouter();
+    const [updating, setUpdating] = useState(false);
 
     const handlePress = () => {
-        router.push(`/match/${match._id}`);
+        router.push(`/match/${match.id}`);
+    };
+
+    const updateStatus = async (newStatus: 'active' | 'inactive' | 'closed') => {
+        if (newStatus === match.adminStatus) return;
+        try {
+            setUpdating(true);
+            await matchApi.changeAdminStatus(match.id, newStatus);
+            if (onUpdate) onUpdate();
+        } catch (error) {
+            Alert.alert('Error', 'Failed to update status');
+        } finally {
+            setUpdating(false);
+        }
+    };
+
+    const getStatusColor = (status: string) => {
+        switch (status) {
+            case 'active': return COLORS.success;
+            case 'inactive': return COLORS.textSecondary;
+            case 'closed': return COLORS.error;
+            default: return COLORS.primary;
+        }
     };
 
     return (
         <TouchableOpacity onPress={handlePress} style={styles.card}>
             <View style={styles.header}>
-                <Text style={styles.title}>{match.title}</Text>
-                <StatusBadge status={match.status} />
+                <View>
+                    <Text style={styles.matchNo}>{match.matchNo}</Text>
+                    <Text style={styles.title}>{match.title}</Text>
+                </View>
+                <View style={styles.statusContainer}>
+                    <StatusBadge status={match.status} />
+                    <View style={styles.statusButtons}>
+                        {['active', 'inactive', 'closed'].map((status) => (
+                            <TouchableOpacity
+                                key={status}
+                                style={[
+                                    styles.statusBtn,
+                                    match.adminStatus === status && styles.statusBtnActive,
+                                    match.adminStatus === status && { backgroundColor: getStatusColor(status) }
+                                ]}
+                                onPress={() => updateStatus(status as any)}
+                                disabled={updating}
+                            >
+                                <Text style={[
+                                    styles.statusBtnText,
+                                    match.adminStatus === status && { color: '#FFF' }
+                                ]}>
+                                    {status.charAt(0).toUpperCase() + status.slice(1)}
+                                </Text>
+                            </TouchableOpacity>
+                        ))}
+                    </View>
+                </View>
             </View>
 
             <View style={styles.divider} />
@@ -84,14 +135,43 @@ const styles = StyleSheet.create({
     header: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        alignItems: 'center',
+        alignItems: 'flex-start',
         marginBottom: SPACING.s,
+    },
+    statusContainer: {
+        alignItems: 'flex-end',
     },
     title: {
         color: COLORS.text,
         fontSize: 18,
         fontFamily: FONTS.bold,
-        flex: 1,
+    },
+    matchNo: {
+        color: COLORS.primary,
+        fontSize: 12,
+        fontFamily: FONTS.bold,
+        marginBottom: 2,
+    },
+    statusButtons: {
+        flexDirection: 'row',
+        marginTop: 6,
+        gap: 4,
+    },
+    statusBtn: {
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        backgroundColor: COLORS.surface,
+    },
+    statusBtnActive: {
+        borderColor: 'transparent',
+    },
+    statusBtnText: {
+        fontSize: 10,
+        fontFamily: FONTS.medium,
+        color: COLORS.textSecondary,
     },
     divider: {
         height: 1,

@@ -7,7 +7,7 @@ import { COLORS, SPACING } from '../src/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 
 interface Match {
-  _id: string;
+  id: string;
   title: string;
   status: string;
   matchType: string;
@@ -57,8 +57,8 @@ export default function Dashboard() {
       ) : (
         <FlatList
           data={matches}
-          keyExtractor={(item) => item._id}
-          renderItem={({ item }) => <MatchCard match={item} />}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => <MatchCard match={item} onUpdate={fetchMatches} />}
           contentContainerStyle={styles.list}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />
@@ -69,12 +69,20 @@ export default function Dashboard() {
         />
       )}
 
-      <TouchableOpacity
-        style={styles.fab}
-        onPress={() => router.push('/create-match')}
-      >
-        <Ionicons name="add" size={30} color="white" />
-      </TouchableOpacity>
+      <View style={styles.fabContainer}>
+        <TouchableOpacity
+          style={[styles.fab, { backgroundColor: COLORS.secondary, marginRight: 10 }]}
+          onPress={() => router.push('/config')}
+        >
+          <Ionicons name="settings-outline" size={24} color="white" />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.fab}
+          onPress={() => router.push('/create-match')}
+        >
+          <Ionicons name="add" size={30} color="white" />
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -92,10 +100,14 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 50,
   },
-  fab: {
+  fabContainer: {
     position: 'absolute',
     bottom: 30,
     right: 30,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  fab: {
     backgroundColor: COLORS.primary,
     width: 60,
     height: 60,

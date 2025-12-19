@@ -1,40 +1,65 @@
 import axios from 'axios';
 
-// Use environment variable or fallback to localhost
-const BASE_URL = process.env.EXPO_PUBLIC_API || 'http://localhost:3020';
+// Main API (Account, etc.)
+const BASE_URL = process.env.EXPO_PUBLIC_API || 'https://my-gamezoneapp.jibonhossen-dev.workers.dev';
+// Match API (Match Worker)
+const MATCH_URL = process.env.EXPO_PUBLIC_MATCH_API || 'https://match-worker.jibonhossen-dev.workers.dev';
 
 const api = axios.create({
     baseURL: BASE_URL,
-    headers: {
-        'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
+});
+
+const matchAxios = axios.create({
+    baseURL: MATCH_URL,
+    headers: { 'Content-Type': 'application/json' },
 });
 
 export const matchApi = {
     // Admin Endpoints
     getAllMatches: async () => {
-        const response = await api.get('/match/admin/all');
+        const response = await matchAxios.get('/match/admin/all');
         return response.data;
     },
     getParticipants: async (matchId: string) => {
-        const response = await api.get(`/match/admin/participants/${matchId}`);
+        const response = await matchAxios.get(`/match/admin/participants/${matchId}`);
         return response.data;
     },
     distributePrizes: async (data: { matchId: string; winners: { uid: string; amount: number }[] }) => {
-        const response = await api.post('/match/admin/distribute', data);
+        const response = await matchAxios.post('/match/admin/distribute', data);
         return response.data;
     },
     getMatchConfig: async () => {
-        const response = await api.get('/match/admin/config');
+        // match-worker has /config routes mounted at /config (check index.ts), NOT /match/config?
+        // Let's check match-worker/src/index.ts
+        // app.route('/config', configRoutes);
+        // app.route('/match', matchRoutes);
+        // So config is at /config endpoints.
+        // BUT original code called /match/admin/config.
+        // I should assume I need to call the new config endpoints.
+        // Let's look at config.routes.ts
+        const response = await matchAxios.get('/config'); // Assuming GET /config returns list
+        return response.data;
+    },
+    addConfig: async (data: { type: 'map' | 'category' | 'match_type'; value: string; label?: string }) => {
+        const response = await matchAxios.post('/config/add', data);
+        return response.data;
+    },
+    deleteConfig: async (id: string) => {
+        const response = await matchAxios.delete(`/config/${id}`);
         return response.data;
     },
     // Standard Endpoints
     createMatch: async (matchData: any) => {
-        const response = await api.post('/match/create', matchData);
+        const response = await matchAxios.post('/match/create', matchData);
         return response.data;
     },
     updateMatch: async (id: string, updates: any) => {
-        const response = await api.put(`/match/update/${id}`, updates);
+        const response = await matchAxios.put(`/match/update/${id}`, updates);
+        return response.data;
+    },
+    changeAdminStatus: async (id: string, adminStatus: 'inactive' | 'active' | 'closed') => {
+        const response = await matchAxios.put(`/match/admin/status/${id}`, { adminStatus });
         return response.data;
     },
 };

@@ -17,7 +17,6 @@ export default function CreateMatch() {
     const [date, setDate] = useState(new Date());
     const [formData, setFormData] = useState({
         title: '',
-        matchNo: '',
         matchType: 'Solo',
         category: 'Battle Royale',
         map: 'Bermuda',
@@ -136,16 +135,13 @@ export default function CreateMatch() {
 
             <View style={styles.card}>
                 <Input label="Title" value={formData.title} onChangeText={(t: string) => handleChange('title', t)} placeholder="e.g. Daily Scrims" />
-                <Input label="Match No" value={formData.matchNo} onChangeText={(t: string) => handleChange('matchNo', t)} placeholder="e.g. #123" />
             </View>
 
-            {config && (
-                <View style={styles.card}>
-                    {renderSelection("Type", "matchType", config.types)}
-                    {renderSelection("Category", "category", config.categories)}
-                    {renderSelection("Map", "map", config.maps)}
-                </View>
-            )}
+            <View style={styles.card}>
+                {renderSelection("Type", "matchType", ['Solo', 'Duo', 'Squad'])}
+                {renderSelection("Category", "category", config?.category ? config.category.map((c: any) => c.value) : ['Battle Royale'])}
+                {renderSelection("Map", "map", config?.map ? config.map.map((c: any) => c.value) : ['Bermuda'])}
+            </View>
 
             <View style={styles.card}>
                 <Text style={styles.sectionTitle}>Schedule</Text>
