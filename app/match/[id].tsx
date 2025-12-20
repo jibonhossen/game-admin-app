@@ -212,27 +212,60 @@ export default function MatchDetails() {
                             </TouchableOpacity>
                         </View>
 
-                        <View style={styles.card}>
-                            {participants.length === 0 ? (
+                        {participants.length === 0 ? (
+                            <View style={styles.card}>
                                 <Text style={styles.emptyText}>No participants joined yet.</Text>
-                            ) : (
-                                participants.map((p, index) => (
-                                    <View key={p.uid} style={[styles.participantRow, index === participants.length - 1 && { borderBottomWidth: 0 }]}>
-                                        <View style={styles.rankContainer}>
-                                            <Text style={styles.rankText}>#{index + 1}</Text>
+                            </View>
+                        ) : (
+                            <View style={styles.participantsList}>
+                                {participants.map((p, index) => (
+                                    <View key={p.uid} style={styles.participantCard}>
+                                        {/* Header with Team Number and Username */}
+                                        <View style={styles.participantHeader}>
+                                            <LinearGradient
+                                                colors={[COLORS.primary, COLORS.primaryDark]}
+                                                style={styles.teamNumberBadge}
+                                            >
+                                                <Text style={styles.teamNumberText}>#{index + 1}</Text>
+                                            </LinearGradient>
+                                            <View style={styles.participantHeaderInfo}>
+                                                <Text style={styles.participantUsername}>{p.username}</Text>
+                                                <View style={styles.contactRow}>
+                                                    <Ionicons name="call" size={12} color={COLORS.success} />
+                                                    <Text style={styles.participantPhone}>{p.phoneNumber || 'N/A'}</Text>
+                                                </View>
+                                            </View>
                                         </View>
-                                        <View style={styles.participantInfo}>
-                                            <Text style={styles.pName}>{p.username}</Text>
-                                            <Text style={styles.pSub}>FF: {p.freeFireName || 'N/A'}</Text>
-                                        </View>
-                                        <View style={styles.phoneContainer}>
-                                            <Ionicons name="call-outline" size={14} color={COLORS.textSecondary} />
-                                            <Text style={styles.phoneText}>{p.number}</Text>
+
+                                        {/* Team Members Section */}
+                                        <View style={styles.teamSection}>
+                                            <Text style={styles.teamSectionLabel}>
+                                                <Ionicons name="people" size={14} color={COLORS.primaryLight} /> Team Members
+                                            </Text>
+                                            {p.teamMembers && p.teamMembers.length > 0 ? (
+                                                <View style={styles.teamMembersGrid}>
+                                                    {p.teamMembers.map((member: string, memberIndex: number) => (
+                                                        <View key={memberIndex} style={styles.memberCard}>
+                                                            <View style={styles.memberIndex}>
+                                                                <Text style={styles.memberIndexText}>{memberIndex + 1}</Text>
+                                                            </View>
+                                                            <Text style={styles.memberName} numberOfLines={1}>{member}</Text>
+                                                        </View>
+                                                    ))}
+                                                </View>
+                                            ) : (
+                                                <View style={styles.memberCard}>
+                                                    <View style={styles.memberIndex}>
+                                                        <Text style={styles.memberIndexText}>1</Text>
+                                                    </View>
+                                                    <Text style={styles.memberName}>{p.freeFireName || 'N/A'}</Text>
+                                                </View>
+                                            )}
                                         </View>
                                     </View>
-                                ))
-                            )}
-                        </View>
+                                ))}
+                            </View>
+                        )}
                     </View>
                 </View>
             </ScrollView>
@@ -551,5 +584,95 @@ const styles = StyleSheet.create({
         color: COLORS.textSecondary,
         fontSize: 12,
         fontStyle: 'italic',
+    },
+    // New Participant Card Styles
+    participantsList: {
+        gap: 12,
+    },
+    participantCard: {
+        backgroundColor: COLORS.surface,
+        borderRadius: 16,
+        padding: 16,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+    },
+    participantHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 12,
+        gap: 12,
+    },
+    teamNumberBadge: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    teamNumberText: {
+        color: 'white',
+        fontWeight: 'bold',
+        fontSize: 16,
+    },
+    participantHeaderInfo: {
+        flex: 1,
+    },
+    participantUsername: {
+        color: COLORS.text,
+        fontWeight: 'bold',
+        fontSize: 16,
+        marginBottom: 2,
+    },
+    contactRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    participantPhone: {
+        color: COLORS.textSecondary,
+        fontSize: 13,
+    },
+    teamSection: {
+        backgroundColor: COLORS.background,
+        borderRadius: 12,
+        padding: 12,
+    },
+    teamSectionLabel: {
+        color: COLORS.textSecondary,
+        fontSize: 13,
+        fontWeight: '600',
+        marginBottom: 10,
+    },
+    teamMembersGrid: {
+        gap: 8,
+    },
+    memberCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: COLORS.surface,
+        padding: 10,
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        gap: 10,
+    },
+    memberIndex: {
+        width: 26,
+        height: 26,
+        borderRadius: 13,
+        backgroundColor: COLORS.primary,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    memberIndexText: {
+        color: 'white',
+        fontWeight: 'bold',
+        fontSize: 12,
+    },
+    memberName: {
+        flex: 1,
+        color: COLORS.text,
+        fontSize: 14,
+        fontWeight: '500',
     },
 });
