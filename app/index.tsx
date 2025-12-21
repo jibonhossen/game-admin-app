@@ -71,10 +71,16 @@ export default function Dashboard() {
 
       <View style={styles.fabContainer}>
         <TouchableOpacity
-          style={[styles.fab, { backgroundColor: COLORS.secondary, marginRight: 10 }]}
+          style={[styles.fab, styles.fabSmall, { backgroundColor: '#4F46E5', marginRight: 10 }]}
+          onPress={() => router.push('/notifications')}
+        >
+          <Ionicons name="notifications" size={22} color="white" />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.fab, styles.fabSmall, { backgroundColor: COLORS.secondary, marginRight: 10 }]}
           onPress={() => router.push('/config')}
         >
-          <Ionicons name="settings-outline" size={24} color="white" />
+          <Ionicons name="settings-outline" size={22} color="white" />
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.fab}
@@ -119,5 +125,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 4.65,
     elevation: 8,
+  },
+  fabSmall: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
   }
 });

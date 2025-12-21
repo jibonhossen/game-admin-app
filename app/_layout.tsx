@@ -53,6 +53,7 @@ export default function RootLayout() {
         <Stack.Screen name="create-match" options={{ title: 'Create Match', presentation: 'modal' }} />
         <Stack.Screen name="match/[id]" options={{ title: 'Match Details' }} />
         <Stack.Screen name="distribute/[id]" options={{ title: 'Distribute Prizes' }} />
+        <Stack.Screen name="notifications" options={{ title: 'Send Notification' }} />
         <Stack.Screen name="+not-found" />
       </Stack>
       <StatusBar style="light" />
