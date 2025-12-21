@@ -64,4 +64,30 @@ export const matchApi = {
     },
 };
 
+// Notification API
+const NOTIFICATION_URL = 'https://notification-worker.jibonhossen-dev.workers.dev';
+
+const notificationAxios = axios.create({
+    baseURL: NOTIFICATION_URL,
+    headers: { 'Content-Type': 'application/json' },
+});
+
+export const notificationApi = {
+    /**
+     * Send push notification to specific users or all users
+     */
+    sendNotification: async (data: {
+        title: string;
+        body: string;
+        imageUrl?: string;
+        data?: Record<string, unknown>;
+        targetType: 'all' | 'specific';
+        userIds?: string[];
+    }) => {
+        const response = await notificationAxios.post('/api/send', data);
+        return response.data;
+    },
+};
+
 export default api;
+

@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TextInput, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, StatusBar, FlatList } from 'react-native';
+import { View, Text, ScrollView, TextInput, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, StatusBar, FlatList, Modal } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { COLORS, SPACING, FONTS } from '../../src/constants/theme';
-import { matchApi } from '../../src/services/api';
+import { matchApi, notificationApi } from '../../src/services/api';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -18,6 +18,9 @@ export default function MatchDetails() {
     const [password, setPassword] = useState('');
     const [updating, setUpdating] = useState(false);
     const [changingStatus, setChangingStatus] = useState(false);
+    const [sendingNotification, setSendingNotification] = useState(false);
+    const [showNotificationModal, setShowNotificationModal] = useState(false);
+    const [notificationMessage, setNotificationMessage] = useState('');
 
     useEffect(() => {
         fetchData();
@@ -85,6 +88,77 @@ export default function MatchDetails() {
                 }
             ]
         );
+    };
+
+    const handleSendNotification = () => {
+        if (participants.length === 0) {
+            Alert.alert('No Participants', 'There are no participants to notify.');
+            return;
+        }
+
+        // Debug: Log participants info
+        console.log('=== NOTIFICATION DEBUG ===');
+        console.log('Total participants:', participants.length);
+        console.log('Participant UIDs:', participants.map((p: any) => p.uid));
+
+        setNotificationMessage('');
+        setShowNotificationModal(true);
+    };
+
+    const sendNotification = async () => {
+        if (!notificationMessage.trim()) {
+            Alert.alert('Error', 'Please enter a message');
+            return;
+        }
+
+        try {
+            setSendingNotification(true);
+            setShowNotificationModal(false);
+            const userIds = participants.map((p: any) => p.uid);
+
+            console.log('=== SENDING NOTIFICATION ===');
+            console.log('Title:', `${match.title} - Match #${match.matchNo}`);
+            console.log('Body:', notificationMessage.trim());
+            console.log('Target User IDs:', userIds);
+
+            const result = await notificationApi.sendNotification({
+                title: `${match.title} - Match #${match.matchNo}`,
+                body: notificationMessage.trim(),
+                data: { screen: 'match-list', matchId: id },
+                targetType: 'specific',
+                userIds,
+            });
+
+            console.log('=== NOTIFICATION RESPONSE ===');
+            console.log('Full response:', JSON.stringify(result, null, 2));
+
+            // Show detailed result in alert
+            const stats = result.stats;
+            let alertMessage = `✅ Notification sent!\n\n`;
+            alertMessage += `📱 Targeted tokens: ${stats?.targetedTokens || 0}\n`;
+            alertMessage += `✓ Successful: ${stats?.successful || 0}\n`;
+            alertMessage += `✗ Failed: ${stats?.failed || 0}`;
+
+            if (stats?.errors && stats.errors.length > 0) {
+                alertMessage += `\n\n⚠️ Errors:\n${stats.errors.join('\n')}`;
+            }
+
+            if (stats?.targetedTokens === 0) {
+                alertMessage += `\n\n⚠️ No push tokens found for these users. They may need to open the app first.`;
+            }
+
+            Alert.alert('Notification Result', alertMessage);
+        } catch (error: any) {
+            console.log('=== NOTIFICATION ERROR ===');
+            console.log('Error:', error);
+            console.log('Error response:', error.response?.data);
+
+            const errorMessage = error.response?.data?.error || error.message || 'Failed to send notification';
+            Alert.alert('Error', `Failed to send notification:\n\n${errorMessage}`);
+        } finally {
+            setSendingNotification(false);
+            setNotificationMessage('');
+        }
     };
 
     if (loading) {
@@ -201,15 +275,30 @@ export default function MatchDetails() {
                             <Text style={styles.sectionTitle}>
                                 Participants <Text style={styles.highlight}>({participants.length}/{match.totalSlots})</Text>
                             </Text>
-                            <TouchableOpacity onPress={() => router.push(`/distribute/${id}`)} style={styles.distributeBtn}>
-                                <LinearGradient
-                                    colors={[COLORS.secondary, '#db2777']}
-                                    style={styles.gradientBadge}
+                            <View style={styles.actionButtonsRow}>
+                                <TouchableOpacity
+                                    onPress={handleSendNotification}
+                                    style={[styles.notifyBtn, sendingNotification && styles.disabledButton]}
+                                    disabled={sendingNotification}
                                 >
-                                    <Ionicons name="gift-outline" size={16} color="white" style={{ marginRight: 4 }} />
-                                    <Text style={styles.distributeText}>Distribute Prizes</Text>
-                                </LinearGradient>
-                            </TouchableOpacity>
+                                    <LinearGradient
+                                        colors={['#4F46E5', '#6366f1']}
+                                        style={styles.gradientBadge}
+                                    >
+                                        <Ionicons name="notifications" size={16} color="white" style={{ marginRight: 4 }} />
+                                        <Text style={styles.distributeText}>{sendingNotification ? 'Sending...' : 'Notify'}</Text>
+                                    </LinearGradient>
+                                </TouchableOpacity>
+                                <TouchableOpacity onPress={() => router.push(`/distribute/${id}`)} style={styles.distributeBtn}>
+                                    <LinearGradient
+                                        colors={[COLORS.secondary, '#db2777']}
+                                        style={styles.gradientBadge}
+                                    >
+                                        <Ionicons name="gift-outline" size={16} color="white" style={{ marginRight: 4 }} />
+                                        <Text style={styles.distributeText}>Distribute</Text>
+                                    </LinearGradient>
+                                </TouchableOpacity>
+                            </View>
                         </View>
 
                         {participants.length === 0 ? (
@@ -269,6 +358,55 @@ export default function MatchDetails() {
                     </View>
                 </View>
             </ScrollView>
+
+            {/* Notification Modal */}
+            <Modal
+                visible={showNotificationModal}
+                transparent={true}
+                animationType="fade"
+                onRequestClose={() => setShowNotificationModal(false)}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <Text style={styles.modalTitle}>Send Notification</Text>
+                        <Text style={styles.modalSubtitle}>
+                            Send push notification to {participants.length} participants
+                        </Text>
+                        <TextInput
+                            style={styles.modalInput}
+                            placeholder="Enter your message..."
+                            placeholderTextColor={COLORS.textSecondary}
+                            value={notificationMessage}
+                            onChangeText={setNotificationMessage}
+                            multiline
+                            numberOfLines={3}
+                            autoFocus
+                        />
+                        <View style={styles.modalButtons}>
+                            <TouchableOpacity
+                                style={styles.modalCancelButton}
+                                onPress={() => setShowNotificationModal(false)}
+                            >
+                                <Text style={styles.modalCancelText}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.modalSendButton, sendingNotification && styles.disabledButton]}
+                                onPress={sendNotification}
+                                disabled={sendingNotification}
+                            >
+                                <LinearGradient
+                                    colors={[COLORS.primary, COLORS.primaryDark]}
+                                    style={styles.modalSendGradient}
+                                >
+                                    <Text style={styles.modalSendText}>
+                                        {sendingNotification ? 'Sending...' : 'Send'}
+                                    </Text>
+                                </LinearGradient>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
         </View>
     );
 }
@@ -453,6 +591,14 @@ const styles = StyleSheet.create({
     },
     highlight: {
         color: COLORS.primaryLight,
+    },
+    actionButtonsRow: {
+        flexDirection: 'row',
+        gap: 8,
+    },
+    notifyBtn: {
+        borderRadius: 20,
+        overflow: 'hidden',
     },
     distributeBtn: {
         borderRadius: 20,
@@ -674,5 +820,77 @@ const styles = StyleSheet.create({
         color: COLORS.text,
         fontSize: 14,
         fontWeight: '500',
+    },
+    // Modal Styles
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0, 0, 0, 0.7)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 20,
+    },
+    modalContent: {
+        backgroundColor: COLORS.surface,
+        borderRadius: 16,
+        padding: 20,
+        width: '100%',
+        maxWidth: 400,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+    },
+    modalTitle: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        color: COLORS.text,
+        marginBottom: 8,
+    },
+    modalSubtitle: {
+        fontSize: 14,
+        color: COLORS.textSecondary,
+        marginBottom: 16,
+    },
+    modalInput: {
+        backgroundColor: COLORS.background,
+        borderRadius: 10,
+        padding: 12,
+        color: COLORS.text,
+        fontSize: 16,
+        minHeight: 80,
+        textAlignVertical: 'top',
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        marginBottom: 16,
+    },
+    modalButtons: {
+        flexDirection: 'row',
+        gap: 12,
+    },
+    modalCancelButton: {
+        flex: 1,
+        padding: 14,
+        borderRadius: 10,
+        backgroundColor: COLORS.background,
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: COLORS.border,
+    },
+    modalCancelText: {
+        color: COLORS.text,
+        fontWeight: '600',
+        fontSize: 16,
+    },
+    modalSendButton: {
+        flex: 1,
+        borderRadius: 10,
+        overflow: 'hidden',
+    },
+    modalSendGradient: {
+        padding: 14,
+        alignItems: 'center',
+    },
+    modalSendText: {
+        color: 'white',
+        fontWeight: 'bold',
+        fontSize: 16,
     },
 });
