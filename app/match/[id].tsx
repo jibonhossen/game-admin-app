@@ -20,6 +20,7 @@ export default function MatchDetails() {
     // Update Form State
     const [customId, setCustomId] = useState('');
     const [password, setPassword] = useState('');
+    const [prizeDetails, setPrizeDetails] = useState('');
     const [updating, setUpdating] = useState(false);
     const [changingStatus, setChangingStatus] = useState(false);
     const [sendingNotification, setSendingNotification] = useState(false);
@@ -40,6 +41,7 @@ export default function MatchDetails() {
                 setMatch(found);
                 setCustomId(found.customId || '');
                 setPassword(found.password || '');
+                setPrizeDetails(found.prizeDetails || '');
 
                 const parts = await matchApi.getParticipants(id as string);
                 setParticipants(parts);
@@ -54,39 +56,36 @@ export default function MatchDetails() {
     const handleUpdate = async () => {
         try {
             setUpdating(true);
-            await matchApi.updateMatch(id as string, { customId, password });
-            setMatch((prev: any) => ({ ...prev, customId, password }));
+            await matchApi.updateMatch(id as string, { customId, password, prizeDetails });
+            setMatch((prev: any) => ({ ...prev, customId, password, prizeDetails }));
 
-            // Auto-send notification to participants with room details
+            // Send notification in background to participants if room details provided
             if (participants.length > 0 && (customId || password)) {
-                try {
-                    const userIds = participants.map((p: any) => p.uid);
-                    const timeLeft = getTimeLeftString();
+                // Construct notification payload
+                const userIds = participants.map((p: any) => p.uid);
+                const timeLeft = getTimeLeftString();
 
-                    let notifyBody = '🎮 Room Details Updated!';
-                    notifyBody += '\n\n📋 Match Details:';
-                    notifyBody += `\n📅 Date: ${match.scheduleDate}`;
-                    notifyBody += `\n⏰ Time: ${match.scheduleTime}`;
-                    notifyBody += `\n🗺️ Map: ${match.map}`;
-                    if (customId) notifyBody += `\n🆔 Room ID: ${customId}`;
-                    if (password) notifyBody += `\n🔑 Password: ${password}`;
-                    if (timeLeft) notifyBody += `\n\n⏳ ${timeLeft}`;
+                let notifyBody = '🎮 Room Details Updated!';
+                notifyBody += '\n\n📋 Match Details:';
+                notifyBody += `\n📅 Date: ${match.scheduleDate}`;
+                notifyBody += `\n⏰ Time: ${match.scheduleTime}`;
+                notifyBody += `\n🗺️ Map: ${match.map}`;
+                if (customId) notifyBody += `\n🆔 Room ID: ${customId}`;
+                if (password) notifyBody += `\n🔑 Password: ${password}`;
+                if (timeLeft) notifyBody += `\n\n⏳ ${timeLeft}`;
 
-                    await notificationApi.sendNotification({
-                        title: `${match.title} - Match #${match.matchNo}`,
-                        body: notifyBody,
-                        data: { screen: 'match-list', matchId: id },
-                        targetType: 'specific',
-                        userIds,
-                        skipSave: true,
-                    });
-                    Alert.alert('Success', 'Match updated and notification sent!');
-                } catch (notifyError) {
-                    Alert.alert('Success', 'Match updated (notification failed)');
-                }
-            } else {
-                Alert.alert('Success', 'Match updated successfully');
+                // Fire and forget (it will complete in background)
+                notificationApi.sendNotification({
+                    title: `${match.title} - Match #${match.matchNo}`,
+                    body: notifyBody,
+                    data: { screen: 'match-list', matchId: id },
+                    targetType: 'specific',
+                    userIds,
+                    skipSave: true,
+                }).catch(err => console.error('Background notification failed:', err));
             }
+
+            Alert.alert('Success', 'Match updated successfully. Sending notification to participants...');
         } catch (error) {
             Alert.alert('Error', 'Failed to update match');
         } finally {
@@ -188,19 +187,21 @@ export default function MatchDetails() {
             if (match.password) detailedBody += `\n🔑 Password: ${match.password}`;
             if (timeLeft) detailedBody += `\n\n⏳ ${timeLeft}`;
 
-            const result = await notificationApi.sendNotification({
+            // Fire and forget for speed
+            notificationApi.sendNotification({
                 title: `${match.title} - Match #${match.matchNo}`,
                 body: detailedBody,
                 data: { screen: 'match-list', matchId: id },
                 targetType: 'specific',
                 userIds,
                 skipSave: true,
+            }).catch(error => {
+                console.error('Manual notification failed:', error);
             });
 
-            const stats = result.stats;
-            Alert.alert('Notify Result', `✅ Notification sent!\n📱 tokens: ${stats?.targetedTokens || 0}\n✓ Success: ${stats?.successful || 0}`);
+            Alert.alert('Success', 'Notification delivery started in the background.');
         } catch (error: any) {
-            Alert.alert('Error', 'Failed to send notification');
+            Alert.alert('Error', 'Failed to initiate notification');
         } finally {
             setSendingNotification(false);
         }
@@ -231,21 +232,16 @@ export default function MatchDetails() {
             <StatusBar barStyle="dark-content" />
 
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
-                {/* Header Section */}
-                <View style={styles.header}>
-                    <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-                        <Ionicons name="arrow-back" size={24} color={COLORS.text} />
-                    </TouchableOpacity>
-                    <View style={styles.headerInfo}>
-                        <View style={styles.statusBadgeRow}>
-                            <StatusIndicator status={match.adminStatus} />
-                            <View style={styles.typeBadge}>
-                                <Text style={styles.typeBadgeText}>{match.category}</Text>
-                            </View>
+                {/* Header Information Section */}
+                <View style={styles.matchHeaderContent}>
+                    <View style={styles.statusBadgeRow}>
+                        <StatusIndicator status={match.adminStatus} />
+                        <View style={styles.typeBadge}>
+                            <Text style={styles.typeBadgeText}>{match.category}</Text>
                         </View>
-                        <Text style={styles.matchTitle}>{match.title}</Text>
-                        <Text style={styles.matchNo}>MATCH NO: #{match.matchNo}</Text>
                     </View>
+                    <Text style={styles.matchTitle}>{match.title}</Text>
+                    <Text style={styles.matchNo}>MATCH NO: #{match.matchNo}</Text>
                 </View>
 
                 {/* Info Grid */}
@@ -306,6 +302,35 @@ export default function MatchDetails() {
                             )}
                         </LinearGradient>
                     </TouchableOpacity>
+                </View>
+
+                {/* Prize Details */}
+                <View style={styles.card}>
+                    <View style={styles.cardHeader}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                            <Ionicons name="trophy-outline" size={18} color={COLORS.primary} />
+                            <Text style={styles.cardTitle}>PRIZE DISTRIBUTION</Text>
+                        </View>
+                        <TouchableOpacity
+                            onPress={() => setPrizeDetails("1st: \n2nd: \n3rd: ")}
+                            style={styles.autoPopBtn}
+                        >
+                            <Ionicons name="flash-outline" size={14} color={COLORS.primary} />
+                            <Text style={styles.autoPopText}>Auto 3 Rows</Text>
+                        </TouchableOpacity>
+                    </View>
+                    <View style={styles.inputGroup}>
+                        <Text style={styles.label}>Prize Details</Text>
+                        <TextInput
+                            style={[styles.input, { height: 100, textAlignVertical: 'top' }]}
+                            value={prizeDetails}
+                            onChangeText={setPrizeDetails}
+                            placeholder="e.g. 1st: 500, 2nd: 250, 3rd: 100"
+                            placeholderTextColor={COLORS.textSecondary}
+                            multiline={true}
+                            numberOfLines={4}
+                        />
+                    </View>
                 </View>
 
                 {/* Quick Actions */}
@@ -441,32 +466,12 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
     },
-    header: {
+    matchHeaderContent: {
         backgroundColor: COLORS.white,
-        paddingTop: 60,
-        paddingBottom: 24,
+        paddingVertical: 24,
         paddingHorizontal: 20,
-        borderBottomLeftRadius: 30,
-        borderBottomRightRadius: 30,
-        shadowColor: COLORS.black,
-        shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.03,
-        shadowRadius: 20,
-        elevation: 5,
-    },
-    backBtn: {
-        width: 44,
-        height: 44,
-        borderRadius: 14,
-        backgroundColor: COLORS.background,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginBottom: 20,
-        borderWidth: 1,
+        borderBottomWidth: 1,
         borderColor: COLORS.border,
-    },
-    headerInfo: {
-        gap: 6,
     },
     statusBadgeRow: {
         flexDirection: 'row',
@@ -569,6 +574,22 @@ const styles = StyleSheet.create({
         fontFamily: 'Poppins_700Bold',
         color: COLORS.primary,
         letterSpacing: 1,
+    },
+    autoPopBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        backgroundColor: COLORS.background,
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+    },
+    autoPopText: {
+        fontSize: 10,
+        fontFamily: 'Poppins_600SemiBold',
+        color: COLORS.primary,
     },
     inputRow: {
         flexDirection: 'row',

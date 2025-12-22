@@ -117,16 +117,6 @@ export default function DistributePrizes() {
                 behavior={Platform.OS === "ios" ? "padding" : "height"}
                 style={{ flex: 1 }}
             >
-                {/* Header */}
-                <View style={styles.header}>
-                    <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-                        <Ionicons name="arrow-back" size={24} color={COLORS.text} />
-                    </TouchableOpacity>
-                    <View>
-                        <Text style={styles.headerTitle}>Distribute Prizes</Text>
-                        <Text style={styles.headerSub}>Allocate funds to match winners</Text>
-                    </View>
-                </View>
 
                 <View style={[styles.content, { paddingBottom: insets.bottom + 100 }]}>
                     <View style={styles.sectionHeader}>
@@ -205,37 +195,6 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-    },
-    header: {
-        backgroundColor: COLORS.white,
-        paddingTop: 60,
-        paddingBottom: 20,
-        paddingHorizontal: 20,
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 16,
-        borderBottomWidth: 1,
-        borderColor: COLORS.border,
-    },
-    backBtn: {
-        width: 44,
-        height: 44,
-        borderRadius: 12,
-        backgroundColor: COLORS.background,
-        justifyContent: 'center',
-        alignItems: 'center',
-        borderWidth: 1,
-        borderColor: COLORS.border,
-    },
-    headerTitle: {
-        fontSize: 22,
-        fontFamily: 'Poppins_700Bold',
-        color: COLORS.text,
-    },
-    headerSub: {
-        fontSize: 13,
-        fontFamily: 'Poppins_400Regular',
-        color: COLORS.textSecondary,
     },
     content: {
         flex: 1,

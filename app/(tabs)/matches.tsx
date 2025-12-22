@@ -28,6 +28,7 @@ export default function CreateMatch() {
         totalSlots: '',
         customId: '',
         password: '',
+        prizeDetails: '',
     });
 
     useEffect(() => {
@@ -93,7 +94,8 @@ export default function CreateMatch() {
                 totalSlots: Number(formData.totalSlots),
                 joinedSlots: 0,
                 status: 'Open',
-                joinedUsers: []
+                joinedUsers: [],
+                prizeDetails: formData.prizeDetails
             });
 
             Alert.alert('Success', 'Match created successfully!', [
@@ -228,6 +230,29 @@ export default function CreateMatch() {
                     </View>
                 </View>
 
+                {/* Prize Details */}
+                <View style={styles.card}>
+                    <View style={styles.prizeHeader}>
+                        <Text style={styles.cardHeader}>PRIZE DISTRIBUTION</Text>
+                        <TouchableOpacity
+                            onPress={() => handleChange('prizeDetails', "1st: \n2nd: \n3rd: ")}
+                            style={styles.autoPopBtn}
+                        >
+                            <Ionicons name="flash-outline" size={14} color={COLORS.primary} />
+                            <Text style={styles.autoPopText}>Auto 3 Rows</Text>
+                        </TouchableOpacity>
+                    </View>
+                    <Input
+                        icon="trophy-outline"
+                        label="Prize Distribution Details"
+                        value={formData.prizeDetails}
+                        onChangeText={(t: string) => handleChange('prizeDetails', t)}
+                        placeholder="e.g. 1st: 500, 2nd: 250, 3rd: 100"
+                        multiline={true}
+                        numberOfLines={4}
+                    />
+                </View>
+
                 <TouchableOpacity
                     onPress={handleSubmit}
                     disabled={loading}
@@ -255,18 +280,20 @@ export default function CreateMatch() {
     );
 }
 
-const Input = ({ label, value, onChangeText, placeholder, keyboardType, flex, icon }: any) => (
+const Input = ({ label, value, onChangeText, placeholder, keyboardType, flex, icon, multiline, numberOfLines }: any) => (
     <View style={[styles.inputContainer, flex && { flex }]}>
         <Text style={styles.label}>{label}</Text>
-        <View style={styles.inputWrapper}>
-            <Ionicons name={icon} size={18} color={COLORS.textSecondary} style={{ marginRight: 10 }} />
+        <View style={[styles.inputWrapper, multiline && { height: 120, alignItems: 'flex-start', paddingTop: 12 }]}>
+            <Ionicons name={icon} size={18} color={COLORS.textSecondary} style={[{ marginRight: 10 }, multiline && { marginTop: 2 }]} />
             <TextInput
-                style={styles.input}
+                style={[styles.input, multiline && { textAlignVertical: 'top' }]}
                 value={value}
                 onChangeText={onChangeText}
                 placeholder={placeholder}
                 placeholderTextColor={COLORS.textSecondary}
                 keyboardType={keyboardType}
+                multiline={multiline}
+                numberOfLines={numberOfLines}
             />
         </View>
     </View>
@@ -312,6 +339,28 @@ const styles = StyleSheet.create({
         color: COLORS.primary,
         letterSpacing: 1,
         marginBottom: 16,
+    },
+    prizeHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 10,
+    },
+    autoPopBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        backgroundColor: COLORS.background,
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+    },
+    autoPopText: {
+        fontSize: 10,
+        fontFamily: 'Poppins_600SemiBold',
+        color: COLORS.primary,
     },
     row: {
         flexDirection: 'row',

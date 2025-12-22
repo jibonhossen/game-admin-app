@@ -169,16 +169,20 @@ export default function NotificationsPage() {
                 <TouchableOpacity
                     onPress={handleSendToAll}
                     disabled={sending}
-                    style={styles.sendButtonContainer}
+                    activeOpacity={0.8}
+                    style={[styles.sendButtonContainer, sending && { opacity: 0.8 }]}
                 >
                     <LinearGradient
-                        colors={[COLORS.primary, COLORS.primaryDark]}
+                        colors={sending ? ['#94a3b8', '#64748b'] : [COLORS.primary, COLORS.primaryDark]}
                         start={{ x: 0, y: 0 }}
                         end={{ x: 1, y: 0 }}
                         style={styles.sendButton}
                     >
                         {sending ? (
-                            <ActivityIndicator color={COLORS.white} />
+                            <View style={styles.sendingContainer}>
+                                <ActivityIndicator color={COLORS.white} size="small" />
+                                <Text style={styles.sendText}>Sending...</Text>
+                            </View>
                         ) : (
                             <>
                                 <Text style={styles.sendText}>Broadcast to All</Text>
@@ -366,6 +370,11 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontFamily: 'Poppins_700Bold',
         color: COLORS.white,
+    },
+    sendingContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
     },
     warningBox: {
         flexDirection: 'row',
