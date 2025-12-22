@@ -83,6 +83,7 @@ export const notificationApi = {
         data?: Record<string, unknown>;
         targetType: 'all' | 'specific';
         userIds?: string[];
+        skipSave?: boolean; // Skip saving to DB (for match notifications)
     }) => {
         const response = await notificationAxios.post('/api/send', data);
         return response.data;

@@ -51,8 +51,39 @@ export default function MatchDetails() {
         try {
             setUpdating(true);
             await matchApi.updateMatch(id as string, { customId, password });
-            Alert.alert('Success', 'Match updated successfully');
             setMatch((prev: any) => ({ ...prev, customId, password }));
+
+            // Auto-send notification to participants with room details
+            if (participants.length > 0 && (customId || password)) {
+                try {
+                    const userIds = participants.map((p: any) => p.uid);
+                    const timeLeft = getTimeLeftString();
+
+                    let notifyBody = '🎮 Room Details Updated!';
+                    notifyBody += '\n\n📋 Match Details:';
+                    notifyBody += `\n📅 Date: ${match.scheduleDate}`;
+                    notifyBody += `\n⏰ Time: ${match.scheduleTime}`;
+                    notifyBody += `\n🗺️ Map: ${match.map}`;
+                    if (customId) notifyBody += `\n🆔 Room ID: ${customId}`;
+                    if (password) notifyBody += `\n🔑 Password: ${password}`;
+                    if (timeLeft) notifyBody += `\n\n⏳ ${timeLeft}`;
+
+                    await notificationApi.sendNotification({
+                        title: `${match.title} - Match #${match.matchNo}`,
+                        body: notifyBody,
+                        data: { screen: 'match-list', matchId: id },
+                        targetType: 'specific',
+                        userIds,
+                        skipSave: true, // Don't save match notifications to DB
+                    });
+                    Alert.alert('Success', 'Match updated and notification sent!');
+                } catch (notifyError) {
+                    console.log('Failed to send notification:', notifyError);
+                    Alert.alert('Success', 'Match updated (notification failed)');
+                }
+            } else {
+                Alert.alert('Success', 'Match updated successfully');
+            }
         } catch (error) {
             Alert.alert('Error', 'Failed to update match');
         } finally {
@@ -90,40 +121,176 @@ export default function MatchDetails() {
         );
     };
 
-    const handleSendNotification = () => {
+    // Helper function to calculate time left until match
+    const getTimeLeftString = () => {
+        try {
+            const monthMap: { [key: string]: number } = {
+                'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5,
+                'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11
+            };
+
+            if (!match?.scheduleDate || !match?.scheduleTime) {
+                return '';
+            }
+
+            // Parse date: "22 Dec 2024" format
+            const dateParts = match.scheduleDate.trim().split(' ');
+            if (dateParts.length !== 3) return '';
+
+            const dayNum = parseInt(dateParts[0], 10);
+            const monthNum = monthMap[dateParts[1]];
+            const yearNum = parseInt(dateParts[2], 10);
+
+            if (isNaN(dayNum) || monthNum === undefined || isNaN(yearNum)) {
+                return '';
+            }
+
+            // Parse time: "12:00 AM" or "2:30 PM" format
+            const timeParts = match.scheduleTime.trim().split(' ');
+            if (timeParts.length !== 2) return '';
+
+            const [timeStr, modifier] = timeParts;
+            const timeComponents = timeStr.split(':');
+            if (timeComponents.length !== 2) return '';
+
+            let hours = parseInt(timeComponents[0], 10);
+            const minutes = parseInt(timeComponents[1], 10);
+
+            if (isNaN(hours) || isNaN(minutes)) return '';
+
+            // Convert 12-hour to 24-hour format
+            if (modifier.toUpperCase() === 'PM' && hours < 12) hours += 12;
+            if (modifier.toUpperCase() === 'AM' && hours === 12) hours = 0;
+
+            const matchDate = new Date(yearNum, monthNum, dayNum, hours, minutes, 0);
+            const now = new Date();
+            const diffMs = matchDate.getTime() - now.getTime();
+
+            if (isNaN(diffMs) || diffMs <= 0) {
+                return diffMs <= 0 ? 'Match has started!' : '';
+            }
+
+            const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+            const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+
+            if (diffDays > 0) {
+                return `${diffDays}d ${diffHours}h ${diffMinutes}m left`;
+            } else if (diffHours > 0) {
+                return `${diffHours}h ${diffMinutes}m left`;
+            } else {
+                return `${diffMinutes}m left`;
+            }
+        } catch (e) {
+            console.log('Time calculation error:', e);
+            return '';
+        }
+    };
+
+    const handleSendNotification = async () => {
         if (participants.length === 0) {
             Alert.alert('No Participants', 'There are no participants to notify.');
             return;
         }
 
-        // Debug: Log participants info
-        console.log('=== NOTIFICATION DEBUG ===');
-        console.log('Total participants:', participants.length);
-        console.log('Participant UIDs:', participants.map((p: any) => p.uid));
+        try {
+            setSendingNotification(true);
+            const userIds = participants.map((p: any) => p.uid);
 
-        setNotificationMessage('');
-        setShowNotificationModal(true);
+            // Build detailed notification body with match info
+            const timeLeft = getTimeLeftString();
+            let detailedBody = '🎮 Get Ready for the Match!';
+            detailedBody += '\n\n📋 Match Details:';
+            detailedBody += `\n📅 Date: ${match.scheduleDate}`;
+            detailedBody += `\n⏰ Time: ${match.scheduleTime}`;
+            detailedBody += `\n🗺️ Map: ${match.map}`;
+            if (match.customId) {
+                detailedBody += `\n🆔 Room ID: ${match.customId}`;
+            }
+            if (match.password) {
+                detailedBody += `\n🔑 Password: ${match.password}`;
+            }
+            if (timeLeft) {
+                detailedBody += `\n\n⏳ ${timeLeft}`;
+            }
+
+            console.log('=== SENDING NOTIFICATION ===');
+            console.log('Title:', `${match.title} - Match #${match.matchNo}`);
+            console.log('Body:', detailedBody);
+            console.log('Target User IDs:', userIds);
+
+            const result = await notificationApi.sendNotification({
+                title: `${match.title} - Match #${match.matchNo}`,
+                body: detailedBody,
+                data: { screen: 'match-list', matchId: id },
+                targetType: 'specific',
+                userIds,
+                skipSave: true, // Don't save match notifications to DB
+            });
+
+            console.log('=== NOTIFICATION RESPONSE ===');
+            console.log('Full response:', JSON.stringify(result, null, 2));
+
+            // Show detailed result in alert
+            const stats = result.stats;
+            let alertMessage = `✅ Notification sent!\n\n`;
+            alertMessage += `📱 Targeted tokens: ${stats?.targetedTokens || 0}\n`;
+            alertMessage += `✓ Successful: ${stats?.successful || 0}\n`;
+            alertMessage += `✗ Failed: ${stats?.failed || 0}`;
+
+            if (stats?.errors && stats.errors.length > 0) {
+                alertMessage += `\n\n⚠️ Errors:\n${stats.errors.join('\n')}`;
+            }
+
+            if (stats?.targetedTokens === 0) {
+                alertMessage += `\n\n⚠️ No push tokens found for these users. They may need to open the app first.`;
+            }
+
+            Alert.alert('Notification Result', alertMessage);
+        } catch (error: any) {
+            console.log('=== NOTIFICATION ERROR ===');
+            console.log('Error:', error);
+            console.log('Error response:', error.response?.data);
+
+            const errorMessage = error.response?.data?.error || error.message || 'Failed to send notification';
+            Alert.alert('Error', `Failed to send notification:\n\n${errorMessage}`);
+        } finally {
+            setSendingNotification(false);
+        }
     };
 
+    // Keep sendNotification for modal (but won't be used now)
     const sendNotification = async () => {
-        if (!notificationMessage.trim()) {
-            Alert.alert('Error', 'Please enter a message');
-            return;
-        }
-
         try {
             setSendingNotification(true);
             setShowNotificationModal(false);
             const userIds = participants.map((p: any) => p.uid);
 
+            // Build detailed notification body with match info
+            const timeLeft = getTimeLeftString();
+            let detailedBody = notificationMessage.trim() || '🎮 Get Ready for the Match!';
+            detailedBody += '\n\n📋 Match Details:';
+            detailedBody += `\n📅 Date: ${match.scheduleDate}`;
+            detailedBody += `\n⏰ Time: ${match.scheduleTime}`;
+            detailedBody += `\n🗺️ Map: ${match.map}`;
+            if (match.customId) {
+                detailedBody += `\n🆔 Room ID: ${match.customId}`;
+            }
+            if (match.password) {
+                detailedBody += `\n🔑 Password: ${match.password}`;
+            }
+            if (timeLeft) {
+                detailedBody += `\n\n⏳ ${timeLeft}`;
+            }
+
             console.log('=== SENDING NOTIFICATION ===');
             console.log('Title:', `${match.title} - Match #${match.matchNo}`);
-            console.log('Body:', notificationMessage.trim());
+            console.log('Body:', detailedBody);
             console.log('Target User IDs:', userIds);
 
             const result = await notificationApi.sendNotification({
                 title: `${match.title} - Match #${match.matchNo}`,
-                body: notificationMessage.trim(),
+                body: detailedBody,
                 data: { screen: 'match-list', matchId: id },
                 targetType: 'specific',
                 userIds,
