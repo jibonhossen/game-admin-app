@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Switch, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { COLORS, SPACING, FONTS } from '../constants/theme';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,9 +8,10 @@ import { matchApi } from '../services/api';
 interface MatchCardProps {
     match: any;
     onUpdate?: () => void;
+    onDelete?: (id: string) => void;
 }
 
-export const MatchCard: React.FC<MatchCardProps> = ({ match, onUpdate }) => {
+export const MatchCard: React.FC<MatchCardProps> = ({ match, onUpdate, onDelete }) => {
     const router = useRouter();
     const [updating, setUpdating] = useState(false);
 
@@ -25,10 +26,37 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, onUpdate }) => {
             await matchApi.changeAdminStatus(match.id, newStatus);
             if (onUpdate) onUpdate();
         } catch (error) {
+            console.error('Status update error:', error);
             Alert.alert('Error', 'Failed to update status');
         } finally {
             setUpdating(false);
         }
+    };
+
+    const handleDelete = () => {
+        Alert.alert(
+            'Delete Match',
+            'Are you sure you want to delete this match? This action cannot be undone.',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Delete',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            setUpdating(true);
+                            await matchApi.deleteMatch(match.id);
+                            if (onDelete) onDelete(match.id);
+                        } catch (error) {
+                            console.error('Delete error:', error);
+                            Alert.alert('Error', 'Failed to delete match');
+                        } finally {
+                            setUpdating(false);
+                        }
+                    }
+                }
+            ]
+        );
     };
 
     const getStatusColor = (status: string) => {
@@ -41,67 +69,88 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, onUpdate }) => {
     };
 
     return (
-        <TouchableOpacity onPress={handlePress} style={styles.card}>
+        <TouchableOpacity onPress={handlePress} activeOpacity={0.9} style={styles.card}>
             <View style={styles.header}>
-                <View>
+                <View style={styles.titleSection}>
                     <Text style={styles.matchNo}>{match.matchNo}</Text>
-                    <Text style={styles.title}>{match.title}</Text>
+                    <Text style={styles.title} numberOfLines={1}>{match.title}</Text>
                 </View>
-                <View style={styles.statusContainer}>
+                <View style={styles.headerActions}>
                     <StatusBadge status={match.status} />
-                    <View style={styles.statusButtons}>
-                        {['active', 'inactive', 'closed'].map((status) => (
-                            <TouchableOpacity
-                                key={status}
-                                style={[
-                                    styles.statusBtn,
-                                    match.adminStatus === status && styles.statusBtnActive,
-                                    match.adminStatus === status && { backgroundColor: getStatusColor(status) }
-                                ]}
-                                onPress={() => updateStatus(status as any)}
-                                disabled={updating}
-                            >
-                                <Text style={[
-                                    styles.statusBtnText,
-                                    match.adminStatus === status && { color: '#FFF' }
-                                ]}>
-                                    {status.charAt(0).toUpperCase() + status.slice(1)}
-                                </Text>
-                            </TouchableOpacity>
-                        ))}
-                    </View>
+                    <TouchableOpacity
+                        onPress={handleDelete}
+                        style={styles.deleteBtn}
+                        disabled={updating}
+                    >
+                        <Ionicons name="trash-outline" size={20} color={COLORS.error} />
+                    </TouchableOpacity>
+                </View>
+            </View>
+
+            <View style={styles.infoGrid}>
+                <View style={styles.infoRow}>
+                    <InfoItem icon="game-controller" value={match.matchType} color={COLORS.primary} />
+                    <InfoItem icon="map" value={match.map} color="#f59e0b" />
+                </View>
+                <View style={styles.infoRow}>
+                    <InfoItem icon="calendar" value={match.scheduleDate} color="#3b82f6" />
+                    <InfoItem icon="time" value={match.scheduleTime} color="#ec4899" />
+                </View>
+            </View>
+
+            <View style={styles.statsRow}>
+                <View style={styles.slotsInfo}>
+                    <Ionicons name="people" size={16} color={COLORS.textSecondary} />
+                    <Text style={styles.slotsText}>
+                        <Text style={styles.slotsJoined}>{match.joinedSlots}</Text>
+                        <Text style={styles.slotsTotal}> / {match.totalSlots} Slots</Text>
+                    </Text>
+                </View>
+                <View style={styles.priceBadge}>
+                    <Text style={styles.priceText}>৳{match.entryFee}</Text>
                 </View>
             </View>
 
             <View style={styles.divider} />
 
-            <View style={styles.row}>
-                <InfoItem icon="game-controller-outline" label="Type" value={match.matchType} />
-                <InfoItem icon="map-outline" label="Map" value={match.map} />
-            </View>
-            <View style={styles.row}>
-                <InfoItem icon="calendar-outline" label="Date" value={match.scheduleDate} />
-                <InfoItem icon="time-outline" label="Time" value={match.scheduleTime} />
-            </View>
-
-            <View style={styles.footer}>
-                <View style={styles.footerItem}>
-                    <Ionicons name="people-outline" size={16} color={COLORS.secondary} />
-                    <Text style={styles.slots}> {match.joinedSlots}/{match.totalSlots}</Text>
-                </View>
-                <View style={[styles.footerItem, styles.feeContainer]}>
-                    <Text style={styles.feeLabel}>Entry: </Text>
-                    <Text style={styles.fees}>৳{match.entryFee}</Text>
+            <View style={styles.adminActions}>
+                <Text style={styles.actionLabel}>Admin Status:</Text>
+                <View style={styles.statusGroup}>
+                    {['active', 'inactive', 'closed'].map((status) => {
+                        const isActive = match.adminStatus === status;
+                        const color = getStatusColor(status);
+                        return (
+                            <TouchableOpacity
+                                key={status}
+                                style={[
+                                    styles.statusBtn,
+                                    isActive && { backgroundColor: color, borderColor: color }
+                                ]}
+                                onPress={() => updateStatus(status as any)}
+                                disabled={updating}
+                            >
+                                {updating && isActive ? (
+                                    <ActivityIndicator size="small" color="#FFF" />
+                                ) : (
+                                    <Text style={[styles.statusBtnText, isActive && { color: COLORS.white }]}>
+                                        {status.toUpperCase()}
+                                    </Text>
+                                )}
+                            </TouchableOpacity>
+                        );
+                    })}
                 </View>
             </View>
         </TouchableOpacity>
     );
 };
 
-const InfoItem = ({ icon, label, value }: { icon: any, label: string, value: string }) => (
+const InfoItem = ({ icon, value, color }: { icon: any, value: string, color: string }) => (
     <View style={styles.infoItem}>
-        <Ionicons name={icon} size={14} color={COLORS.textSecondary} style={{ marginRight: 4 }} />
-        <Text style={styles.value}>{value}</Text>
+        <View style={[styles.infoIconBg, { backgroundColor: color + '10' }]}>
+            <Ionicons name={icon as any} size={14} color={color} />
+        </View>
+        <Text style={styles.infoText} numberOfLines={1}>{value}</Text>
     </View>
 );
 
@@ -112,128 +161,172 @@ const StatusBadge = ({ status }: { status: string }) => {
     if (status === 'Completed') color = COLORS.textSecondary;
 
     return (
-        <View style={[styles.badge, { backgroundColor: color + '20', borderColor: color }]}>
-            <Text style={[styles.badgeText, { color }]}>{status}</Text>
+        <View style={[styles.badge, { backgroundColor: color + '10' }]}>
+            <View style={[styles.badgeDot, { backgroundColor: color }]} />
+            <Text style={[styles.badgeText, { color }]}>{status.toUpperCase()}</Text>
         </View>
     );
 };
 
 const styles = StyleSheet.create({
     card: {
-        backgroundColor: COLORS.backgroundLight,
-        borderRadius: 16,
-        padding: SPACING.m,
-        marginBottom: SPACING.m,
+        backgroundColor: COLORS.white,
+        borderRadius: 24,
+        padding: 20,
+        marginBottom: 16,
         borderWidth: 1,
         borderColor: COLORS.border,
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 4,
+        shadowColor: COLORS.black,
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.04,
+        shadowRadius: 15,
         elevation: 3,
     },
     header: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        alignItems: 'flex-start',
-        marginBottom: SPACING.s,
+        alignItems: 'center',
+        marginBottom: 16,
     },
-    statusContainer: {
-        alignItems: 'flex-end',
+    headerActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
     },
-    title: {
-        color: COLORS.text,
-        fontSize: 18,
-        fontFamily: FONTS.bold,
+    deleteBtn: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: COLORS.error + '10',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    titleSection: {
+        flex: 1,
+        marginRight: 10,
     },
     matchNo: {
+        fontSize: 10,
+        fontFamily: 'Poppins_700Bold',
         color: COLORS.primary,
-        fontSize: 12,
-        fontFamily: FONTS.bold,
+        letterSpacing: 1,
         marginBottom: 2,
     },
-    statusButtons: {
+    title: {
+        fontSize: 18,
+        fontFamily: 'Poppins_700Bold',
+        color: COLORS.text,
+    },
+    infoGrid: {
+        gap: 12,
+        marginBottom: 16,
+    },
+    infoRow: {
         flexDirection: 'row',
-        marginTop: 6,
-        gap: 4,
+        gap: 12,
     },
-    statusBtn: {
-        paddingHorizontal: 8,
-        paddingVertical: 4,
+    infoItem: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: COLORS.background,
+        padding: 8,
+        borderRadius: 12,
+    },
+    infoIconBg: {
+        width: 28,
+        height: 28,
         borderRadius: 8,
-        borderWidth: 1,
-        borderColor: COLORS.border,
-        backgroundColor: COLORS.surface,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 8,
     },
-    statusBtnActive: {
-        borderColor: 'transparent',
+    infoText: {
+        fontSize: 12,
+        fontFamily: 'Poppins_600SemiBold',
+        color: COLORS.text,
+        flex: 1,
     },
-    statusBtnText: {
-        fontSize: 10,
-        fontFamily: FONTS.medium,
+    statsRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 16,
+    },
+    slotsInfo: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    slotsText: {
+        fontSize: 13,
+        fontFamily: 'Poppins_600SemiBold',
+    },
+    slotsJoined: {
+        color: COLORS.text,
+    },
+    slotsTotal: {
         color: COLORS.textSecondary,
+    },
+    priceBadge: {
+        backgroundColor: COLORS.secondary + '15',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 10,
+    },
+    priceText: {
+        fontSize: 15,
+        fontFamily: 'Poppins_700Bold',
+        color: COLORS.secondary,
     },
     divider: {
         height: 1,
         backgroundColor: COLORS.border,
-        marginVertical: SPACING.s,
+        marginBottom: 16,
     },
-    row: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        marginBottom: SPACING.s,
+    adminActions: {
+        gap: 10,
     },
-    infoItem: {
+    actionLabel: {
+        fontSize: 11,
+        fontFamily: 'Poppins_700Bold',
+        color: COLORS.textSecondary,
+        letterSpacing: 0.5,
+    },
+    statusGroup: {
         flexDirection: 'row',
-        alignItems: 'center',
+        gap: 8,
+    },
+    statusBtn: {
         flex: 1,
-    },
-    value: {
-        color: COLORS.text,
-        fontSize: 14,
-        fontFamily: FONTS.medium,
-    },
-    footer: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        marginTop: SPACING.s,
-        paddingTop: SPACING.s,
-        borderTopWidth: 1,
-        borderTopColor: COLORS.border,
-    },
-    footerItem: {
-        flexDirection: 'row',
+        height: 36,
+        borderRadius: 10,
+        borderWidth: 1.5,
+        borderColor: COLORS.border,
+        justifyContent: 'center',
         alignItems: 'center',
+        backgroundColor: COLORS.white,
     },
-    slots: {
+    statusBtnText: {
+        fontSize: 10,
+        fontFamily: 'Poppins_700Bold',
         color: COLORS.textSecondary,
-        fontFamily: FONTS.medium,
-        fontSize: 14,
-    },
-    feeContainer: {
-        backgroundColor: COLORS.primary + '15',
-        paddingHorizontal: 12,
-        paddingVertical: 4,
-        borderRadius: 12,
-    },
-    feeLabel: {
-        color: COLORS.textSecondary,
-        fontSize: 12,
-        fontFamily: FONTS.regular,
-    },
-    fees: {
-        color: COLORS.primary,
-        fontFamily: FONTS.bold,
-        fontSize: 14,
     },
     badge: {
-        paddingHorizontal: 8,
-        paddingVertical: 2,
-        borderRadius: 6,
-        borderWidth: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+        borderRadius: 8,
+        gap: 6,
+    },
+    badgeDot: {
+        width: 6,
+        height: 6,
+        borderRadius: 3,
     },
     badgeText: {
-        fontSize: 12,
-        fontFamily: FONTS.bold,
+        fontSize: 10,
+        fontFamily: 'Poppins_700Bold',
     },
 });

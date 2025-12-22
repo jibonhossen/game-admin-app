@@ -1,14 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TextInput, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, StatusBar, FlatList, Modal } from 'react-native';
+import { View, Text, ScrollView, TextInput, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, StatusBar, Modal, Dimensions } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { COLORS, SPACING, FONTS } from '../../src/constants/theme';
 import { matchApi, notificationApi } from '../../src/services/api';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+const { width } = Dimensions.get('window');
 
 export default function MatchDetails() {
     const { id } = useLocalSearchParams();
     const router = useRouter();
+    const insets = useSafeAreaInsets();
     const [match, setMatch] = useState<any>(null);
     const [participants, setParticipants] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -74,11 +78,10 @@ export default function MatchDetails() {
                         data: { screen: 'match-list', matchId: id },
                         targetType: 'specific',
                         userIds,
-                        skipSave: true, // Don't save match notifications to DB
+                        skipSave: true,
                     });
                     Alert.alert('Success', 'Match updated and notification sent!');
                 } catch (notifyError) {
-                    console.log('Failed to send notification:', notifyError);
                     Alert.alert('Success', 'Match updated (notification failed)');
                 }
             } else {
@@ -121,7 +124,6 @@ export default function MatchDetails() {
         );
     };
 
-    // Helper function to calculate time left until match
     const getTimeLeftString = () => {
         try {
             const monthMap: { [key: string]: number } = {
@@ -129,11 +131,8 @@ export default function MatchDetails() {
                 'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11
             };
 
-            if (!match?.scheduleDate || !match?.scheduleTime) {
-                return '';
-            }
+            if (!match?.scheduleDate || !match?.scheduleTime) return '';
 
-            // Parse date: "22 Dec 2024" format
             const dateParts = match.scheduleDate.trim().split(' ');
             if (dateParts.length !== 3) return '';
 
@@ -141,24 +140,14 @@ export default function MatchDetails() {
             const monthNum = monthMap[dateParts[1]];
             const yearNum = parseInt(dateParts[2], 10);
 
-            if (isNaN(dayNum) || monthNum === undefined || isNaN(yearNum)) {
-                return '';
-            }
-
-            // Parse time: "12:00 AM" or "2:30 PM" format
             const timeParts = match.scheduleTime.trim().split(' ');
             if (timeParts.length !== 2) return '';
 
             const [timeStr, modifier] = timeParts;
             const timeComponents = timeStr.split(':');
-            if (timeComponents.length !== 2) return '';
-
             let hours = parseInt(timeComponents[0], 10);
             const minutes = parseInt(timeComponents[1], 10);
 
-            if (isNaN(hours) || isNaN(minutes)) return '';
-
-            // Convert 12-hour to 24-hour format
             if (modifier.toUpperCase() === 'PM' && hours < 12) hours += 12;
             if (modifier.toUpperCase() === 'AM' && hours === 12) hours = 0;
 
@@ -166,23 +155,16 @@ export default function MatchDetails() {
             const now = new Date();
             const diffMs = matchDate.getTime() - now.getTime();
 
-            if (isNaN(diffMs) || diffMs <= 0) {
-                return diffMs <= 0 ? 'Match has started!' : '';
-            }
+            if (isNaN(diffMs) || diffMs <= 0) return diffMs <= 0 ? 'Match has started!' : '';
 
             const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
             const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
             const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
 
-            if (diffDays > 0) {
-                return `${diffDays}d ${diffHours}h ${diffMinutes}m left`;
-            } else if (diffHours > 0) {
-                return `${diffHours}h ${diffMinutes}m left`;
-            } else {
-                return `${diffMinutes}m left`;
-            }
+            if (diffDays > 0) return `${diffDays}d ${diffHours}h ${diffMinutes}m left`;
+            if (diffHours > 0) return `${diffHours}h ${diffMinutes}m left`;
+            return `${diffMinutes}m left`;
         } catch (e) {
-            console.log('Time calculation error:', e);
             return '';
         }
     };
@@ -196,28 +178,15 @@ export default function MatchDetails() {
         try {
             setSendingNotification(true);
             const userIds = participants.map((p: any) => p.uid);
-
-            // Build detailed notification body with match info
             const timeLeft = getTimeLeftString();
             let detailedBody = '🎮 Get Ready for the Match!';
             detailedBody += '\n\n📋 Match Details:';
             detailedBody += `\n📅 Date: ${match.scheduleDate}`;
             detailedBody += `\n⏰ Time: ${match.scheduleTime}`;
             detailedBody += `\n🗺️ Map: ${match.map}`;
-            if (match.customId) {
-                detailedBody += `\n🆔 Room ID: ${match.customId}`;
-            }
-            if (match.password) {
-                detailedBody += `\n🔑 Password: ${match.password}`;
-            }
-            if (timeLeft) {
-                detailedBody += `\n\n⏳ ${timeLeft}`;
-            }
-
-            console.log('=== SENDING NOTIFICATION ===');
-            console.log('Title:', `${match.title} - Match #${match.matchNo}`);
-            console.log('Body:', detailedBody);
-            console.log('Target User IDs:', userIds);
+            if (match.customId) detailedBody += `\n🆔 Room ID: ${match.customId}`;
+            if (match.password) detailedBody += `\n🔑 Password: ${match.password}`;
+            if (timeLeft) detailedBody += `\n\n⏳ ${timeLeft}`;
 
             const result = await notificationApi.sendNotification({
                 title: `${match.title} - Match #${match.matchNo}`,
@@ -225,106 +194,15 @@ export default function MatchDetails() {
                 data: { screen: 'match-list', matchId: id },
                 targetType: 'specific',
                 userIds,
-                skipSave: true, // Don't save match notifications to DB
+                skipSave: true,
             });
 
-            console.log('=== NOTIFICATION RESPONSE ===');
-            console.log('Full response:', JSON.stringify(result, null, 2));
-
-            // Show detailed result in alert
             const stats = result.stats;
-            let alertMessage = `✅ Notification sent!\n\n`;
-            alertMessage += `📱 Targeted tokens: ${stats?.targetedTokens || 0}\n`;
-            alertMessage += `✓ Successful: ${stats?.successful || 0}\n`;
-            alertMessage += `✗ Failed: ${stats?.failed || 0}`;
-
-            if (stats?.errors && stats.errors.length > 0) {
-                alertMessage += `\n\n⚠️ Errors:\n${stats.errors.join('\n')}`;
-            }
-
-            if (stats?.targetedTokens === 0) {
-                alertMessage += `\n\n⚠️ No push tokens found for these users. They may need to open the app first.`;
-            }
-
-            Alert.alert('Notification Result', alertMessage);
+            Alert.alert('Notify Result', `✅ Notification sent!\n📱 tokens: ${stats?.targetedTokens || 0}\n✓ Success: ${stats?.successful || 0}`);
         } catch (error: any) {
-            console.log('=== NOTIFICATION ERROR ===');
-            console.log('Error:', error);
-            console.log('Error response:', error.response?.data);
-
-            const errorMessage = error.response?.data?.error || error.message || 'Failed to send notification';
-            Alert.alert('Error', `Failed to send notification:\n\n${errorMessage}`);
+            Alert.alert('Error', 'Failed to send notification');
         } finally {
             setSendingNotification(false);
-        }
-    };
-
-    // Keep sendNotification for modal (but won't be used now)
-    const sendNotification = async () => {
-        try {
-            setSendingNotification(true);
-            setShowNotificationModal(false);
-            const userIds = participants.map((p: any) => p.uid);
-
-            // Build detailed notification body with match info
-            const timeLeft = getTimeLeftString();
-            let detailedBody = notificationMessage.trim() || '🎮 Get Ready for the Match!';
-            detailedBody += '\n\n📋 Match Details:';
-            detailedBody += `\n📅 Date: ${match.scheduleDate}`;
-            detailedBody += `\n⏰ Time: ${match.scheduleTime}`;
-            detailedBody += `\n🗺️ Map: ${match.map}`;
-            if (match.customId) {
-                detailedBody += `\n🆔 Room ID: ${match.customId}`;
-            }
-            if (match.password) {
-                detailedBody += `\n🔑 Password: ${match.password}`;
-            }
-            if (timeLeft) {
-                detailedBody += `\n\n⏳ ${timeLeft}`;
-            }
-
-            console.log('=== SENDING NOTIFICATION ===');
-            console.log('Title:', `${match.title} - Match #${match.matchNo}`);
-            console.log('Body:', detailedBody);
-            console.log('Target User IDs:', userIds);
-
-            const result = await notificationApi.sendNotification({
-                title: `${match.title} - Match #${match.matchNo}`,
-                body: detailedBody,
-                data: { screen: 'match-list', matchId: id },
-                targetType: 'specific',
-                userIds,
-            });
-
-            console.log('=== NOTIFICATION RESPONSE ===');
-            console.log('Full response:', JSON.stringify(result, null, 2));
-
-            // Show detailed result in alert
-            const stats = result.stats;
-            let alertMessage = `✅ Notification sent!\n\n`;
-            alertMessage += `📱 Targeted tokens: ${stats?.targetedTokens || 0}\n`;
-            alertMessage += `✓ Successful: ${stats?.successful || 0}\n`;
-            alertMessage += `✗ Failed: ${stats?.failed || 0}`;
-
-            if (stats?.errors && stats.errors.length > 0) {
-                alertMessage += `\n\n⚠️ Errors:\n${stats.errors.join('\n')}`;
-            }
-
-            if (stats?.targetedTokens === 0) {
-                alertMessage += `\n\n⚠️ No push tokens found for these users. They may need to open the app first.`;
-            }
-
-            Alert.alert('Notification Result', alertMessage);
-        } catch (error: any) {
-            console.log('=== NOTIFICATION ERROR ===');
-            console.log('Error:', error);
-            console.log('Error response:', error.response?.data);
-
-            const errorMessage = error.response?.data?.error || error.message || 'Failed to send notification';
-            Alert.alert('Error', `Failed to send notification:\n\n${errorMessage}`);
-        } finally {
-            setSendingNotification(false);
-            setNotificationMessage('');
         }
     };
 
@@ -339,6 +217,7 @@ export default function MatchDetails() {
     if (!match) {
         return (
             <View style={styles.center}>
+                <Ionicons name="alert-circle-outline" size={64} color={COLORS.error} />
                 <Text style={styles.errorText}>Match not found</Text>
                 <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
                     <Text style={styles.backButtonText}>Go Back</Text>
@@ -347,236 +226,210 @@ export default function MatchDetails() {
         );
     }
 
-    const renderHeader = () => (
-        <LinearGradient
-            colors={[COLORS.primaryDark, COLORS.background]}
-            style={styles.headerGradient}
-        >
-            <View style={styles.headerContent}>
-                <View style={styles.badgeContainer}>
-                    <View style={[styles.badge, match.status === 'Open' ? styles.badgeOpen : styles.badgeClosed]}>
-                        <Text style={styles.badgeText}>{match.status}</Text>
-                    </View>
-                    <View style={styles.badgeSecondary}>
-                        <Text style={styles.badgeText}>{match.category}</Text>
-                    </View>
-                </View>
-                <Text style={styles.title}>{match.title}</Text>
-                <Text style={styles.subtitle}>Match #{match.matchNo}</Text>
-            </View>
-        </LinearGradient>
-    );
-
-    const renderInfoCard = (icon: any, label: string, value: string) => (
-        <View style={styles.infoCard}>
-            <View style={styles.iconContainer}>
-                <Ionicons name={icon} size={20} color={COLORS.primaryLight} />
-            </View>
-            <View>
-                <Text style={styles.infoLabel}>{label}</Text>
-                <Text style={styles.infoValue}>{value}</Text>
-            </View>
-        </View>
-    );
-
     return (
         <View style={styles.container}>
-            <StatusBar barStyle="light-content" />
+            <StatusBar barStyle="dark-content" />
 
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
-                {renderHeader()}
-
-                <View style={styles.content}>
-                    {/* Key Info Grid */}
-                    <View style={styles.grid}>
-                        {renderInfoCard('calendar', 'Date', match.scheduleDate)}
-                        {renderInfoCard('time', 'Time', match.scheduleTime)}
-                        {renderInfoCard('map', 'Map', match.map)}
-                        {renderInfoCard('people', 'Type', match.matchType)}
-                    </View>
-
-                    {/* Room Management */}
-                    <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>Room Configuration</Text>
-                        <View style={styles.card}>
-                            <View style={styles.inputGroup}>
-                                <Text style={styles.label}>Room ID</Text>
-                                <TextInput
-                                    style={styles.input}
-                                    value={customId}
-                                    onChangeText={setCustomId}
-                                    placeholder="Enter Room ID"
-                                    placeholderTextColor={COLORS.textSecondary}
-                                />
-                            </View>
-                            <View style={styles.inputGroup}>
-                                <Text style={styles.label}>Password</Text>
-                                <TextInput
-                                    style={styles.input}
-                                    value={password}
-                                    onChangeText={setPassword}
-                                    placeholder="Enter Password"
-                                    placeholderTextColor={COLORS.textSecondary}
-                                />
-                            </View>
-                            <TouchableOpacity
-                                style={[styles.updateButton, updating && styles.disabledButton]}
-                                onPress={handleUpdate}
-                                disabled={updating}
-                            >
-                                <LinearGradient
-                                    colors={[COLORS.primary, COLORS.primaryDark]}
-                                    style={styles.gradientButton}
-                                    start={{ x: 0, y: 0 }}
-                                    end={{ x: 1, y: 0 }}
-                                >
-                                    <Text style={styles.buttonText}>{updating ? 'Updating...' : 'Update & Notify'}</Text>
-                                </LinearGradient>
-                            </TouchableOpacity>
-                        </View>
-                    </View>
-
-                    {/* Participants Section */}
-                    <View style={styles.section}>
-                        <View style={styles.rowBetween}>
-                            <Text style={styles.sectionTitle}>
-                                Participants <Text style={styles.highlight}>({participants.length}/{match.totalSlots})</Text>
-                            </Text>
-                            <View style={styles.actionButtonsRow}>
-                                <TouchableOpacity
-                                    onPress={handleSendNotification}
-                                    style={[styles.notifyBtn, sendingNotification && styles.disabledButton]}
-                                    disabled={sendingNotification}
-                                >
-                                    <LinearGradient
-                                        colors={['#4F46E5', '#6366f1']}
-                                        style={styles.gradientBadge}
-                                    >
-                                        <Ionicons name="notifications" size={16} color="white" style={{ marginRight: 4 }} />
-                                        <Text style={styles.distributeText}>{sendingNotification ? 'Sending...' : 'Notify'}</Text>
-                                    </LinearGradient>
-                                </TouchableOpacity>
-                                <TouchableOpacity onPress={() => router.push(`/distribute/${id}`)} style={styles.distributeBtn}>
-                                    <LinearGradient
-                                        colors={[COLORS.secondary, '#db2777']}
-                                        style={styles.gradientBadge}
-                                    >
-                                        <Ionicons name="gift-outline" size={16} color="white" style={{ marginRight: 4 }} />
-                                        <Text style={styles.distributeText}>Distribute</Text>
-                                    </LinearGradient>
-                                </TouchableOpacity>
+                {/* Header Section */}
+                <View style={styles.header}>
+                    <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+                        <Ionicons name="arrow-back" size={24} color={COLORS.text} />
+                    </TouchableOpacity>
+                    <View style={styles.headerInfo}>
+                        <View style={styles.statusBadgeRow}>
+                            <StatusIndicator status={match.adminStatus} />
+                            <View style={styles.typeBadge}>
+                                <Text style={styles.typeBadgeText}>{match.category}</Text>
                             </View>
                         </View>
-
-                        {participants.length === 0 ? (
-                            <View style={styles.card}>
-                                <Text style={styles.emptyText}>No participants joined yet.</Text>
-                            </View>
-                        ) : (
-                            <View style={styles.participantsList}>
-                                {participants.map((p, index) => (
-                                    <View key={p.uid} style={styles.participantCard}>
-                                        {/* Header with Team Number and Username */}
-                                        <View style={styles.participantHeader}>
-                                            <LinearGradient
-                                                colors={[COLORS.primary, COLORS.primaryDark]}
-                                                style={styles.teamNumberBadge}
-                                            >
-                                                <Text style={styles.teamNumberText}>#{index + 1}</Text>
-                                            </LinearGradient>
-                                            <View style={styles.participantHeaderInfo}>
-                                                <Text style={styles.participantUsername}>{p.username}</Text>
-                                                <View style={styles.contactRow}>
-                                                    <Ionicons name="call" size={12} color={COLORS.success} />
-                                                    <Text style={styles.participantPhone}>{p.phoneNumber || 'N/A'}</Text>
-                                                </View>
-                                            </View>
-                                        </View>
-
-                                        {/* Team Members Section */}
-                                        <View style={styles.teamSection}>
-                                            <Text style={styles.teamSectionLabel}>
-                                                <Ionicons name="people" size={14} color={COLORS.primaryLight} /> Team Members
-                                            </Text>
-                                            {p.teamMembers && p.teamMembers.length > 0 ? (
-                                                <View style={styles.teamMembersGrid}>
-                                                    {p.teamMembers.map((member: string, memberIndex: number) => (
-                                                        <View key={memberIndex} style={styles.memberCard}>
-                                                            <View style={styles.memberIndex}>
-                                                                <Text style={styles.memberIndexText}>{memberIndex + 1}</Text>
-                                                            </View>
-                                                            <Text style={styles.memberName} numberOfLines={1}>{member}</Text>
-                                                        </View>
-                                                    ))}
-                                                </View>
-                                            ) : (
-                                                <View style={styles.memberCard}>
-                                                    <View style={styles.memberIndex}>
-                                                        <Text style={styles.memberIndexText}>1</Text>
-                                                    </View>
-                                                    <Text style={styles.memberName}>{p.freeFireName || 'N/A'}</Text>
-                                                </View>
-                                            )}
-                                        </View>
-                                    </View>
-                                ))}
-                            </View>
-                        )}
+                        <Text style={styles.matchTitle}>{match.title}</Text>
+                        <Text style={styles.matchNo}>MATCH NO: #{match.matchNo}</Text>
                     </View>
                 </View>
+
+                {/* Info Grid */}
+                <View style={[styles.card, styles.infoGrid]}>
+                    <InfoBox icon="calendar" label="Date" value={match.scheduleDate} color="#3b82f6" />
+                    <InfoBox icon="time" label="Time" value={match.scheduleTime} color="#ec4899" />
+                    <InfoBox icon="map" label="Map" value={match.map} color="#f59e0b" />
+                    <InfoBox icon="people" label="Type" value={match.matchType} color={COLORS.primary} />
+                </View>
+
+                {/* Room Config */}
+                <View style={styles.card}>
+                    <View style={styles.cardHeader}>
+                        <Ionicons name="create-outline" size={18} color={COLORS.primary} />
+                        <Text style={styles.cardTitle}>ROOM CONFIGURATION</Text>
+                    </View>
+                    <View style={styles.inputRow}>
+                        <View style={styles.inputGroup}>
+                            <Text style={styles.label}>Room ID</Text>
+                            <TextInput
+                                style={styles.input}
+                                value={customId}
+                                onChangeText={setCustomId}
+                                placeholder="Wait for Match"
+                                placeholderTextColor={COLORS.textSecondary}
+                            />
+                        </View>
+                        <View style={styles.inputGroup}>
+                            <Text style={styles.label}>Password</Text>
+                            <TextInput
+                                style={styles.input}
+                                value={password}
+                                onChangeText={setPassword}
+                                placeholder="****"
+                                placeholderTextColor={COLORS.textSecondary}
+                            />
+                        </View>
+                    </View>
+                    <TouchableOpacity
+                        onPress={handleUpdate}
+                        disabled={updating}
+                        activeOpacity={0.8}
+                        style={styles.updateBtn}
+                    >
+                        <LinearGradient
+                            colors={[COLORS.primary, COLORS.primaryDark]}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 0 }}
+                            style={styles.gradientBtn}
+                        >
+                            {updating ? (
+                                <ActivityIndicator color={COLORS.white} />
+                            ) : (
+                                <>
+                                    <Text style={styles.updateText}>Update Credentials</Text>
+                                    <Ionicons name="notifications-outline" size={18} color={COLORS.white} />
+                                </>
+                            )}
+                        </LinearGradient>
+                    </TouchableOpacity>
+                </View>
+
+                {/* Quick Actions */}
+                <View style={[styles.card, styles.actionsRow]}>
+                    <ActionButton
+                        icon="notifications"
+                        label="PUSH ALERT"
+                        onPress={handleSendNotification}
+                        color="#4F46E5"
+                        loading={sendingNotification}
+                    />
+                    <ActionButton
+                        icon="gift"
+                        label="DISTRIBUTE"
+                        onPress={() => router.push(`/distribute/${id}`)}
+                        color={COLORS.secondary}
+                    />
+                    <ActionButton
+                        icon={match.adminStatus === 'closed' ? 'refresh' : 'power'}
+                        label={match.adminStatus === 'closed' ? 'REOPEN' : 'CLOSE'}
+                        onPress={() => handleStatusChange(match.adminStatus === 'closed' ? 'active' : 'closed')}
+                        color={match.adminStatus === 'closed' ? COLORS.success : COLORS.error}
+                        loading={changingStatus}
+                    />
+                </View>
+
+                {/* Participants List */}
+                <View style={styles.partHeader}>
+                    <Text style={styles.partTitle}>Participants</Text>
+                    <View style={styles.partCount}>
+                        <Text style={styles.countText}>{participants.length} / {match.totalSlots}</Text>
+                    </View>
+                </View>
+
+                <View style={styles.participantsList}>
+                    {participants.length === 0 ? (
+                        <View style={styles.emptyPart}>
+                            <Ionicons name="people-outline" size={48} color={COLORS.border} />
+                            <Text style={styles.emptyText}>No one has joined this match yet.</Text>
+                        </View>
+                    ) : (
+                        participants.map((p, index) => (
+                            <ParticipantCard key={p.uid} data={p} index={index} />
+                        ))
+                    )}
+                </View>
+
             </ScrollView>
-
-            {/* Notification Modal */}
-            <Modal
-                visible={showNotificationModal}
-                transparent={true}
-                animationType="fade"
-                onRequestClose={() => setShowNotificationModal(false)}
-            >
-                <View style={styles.modalOverlay}>
-                    <View style={styles.modalContent}>
-                        <Text style={styles.modalTitle}>Send Notification</Text>
-                        <Text style={styles.modalSubtitle}>
-                            Send push notification to {participants.length} participants
-                        </Text>
-                        <TextInput
-                            style={styles.modalInput}
-                            placeholder="Enter your message..."
-                            placeholderTextColor={COLORS.textSecondary}
-                            value={notificationMessage}
-                            onChangeText={setNotificationMessage}
-                            multiline
-                            numberOfLines={3}
-                            autoFocus
-                        />
-                        <View style={styles.modalButtons}>
-                            <TouchableOpacity
-                                style={styles.modalCancelButton}
-                                onPress={() => setShowNotificationModal(false)}
-                            >
-                                <Text style={styles.modalCancelText}>Cancel</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                style={[styles.modalSendButton, sendingNotification && styles.disabledButton]}
-                                onPress={sendNotification}
-                                disabled={sendingNotification}
-                            >
-                                <LinearGradient
-                                    colors={[COLORS.primary, COLORS.primaryDark]}
-                                    style={styles.modalSendGradient}
-                                >
-                                    <Text style={styles.modalSendText}>
-                                        {sendingNotification ? 'Sending...' : 'Send'}
-                                    </Text>
-                                </LinearGradient>
-                            </TouchableOpacity>
-                        </View>
-                    </View>
-                </View>
-            </Modal>
         </View>
     );
 }
+
+const InfoBox = ({ icon, label, value, color }: any) => (
+    <View style={styles.infoBox}>
+        <View style={[styles.infoIconBg, { backgroundColor: color + '10' }]}>
+            <Ionicons name={icon} size={18} color={color} />
+        </View>
+        <View>
+            <Text style={styles.infoLabel}>{label}</Text>
+            <Text style={styles.infoValue}>{value}</Text>
+        </View>
+    </View>
+);
+
+const ActionButton = ({ icon, label, onPress, color, loading }: any) => (
+    <TouchableOpacity onPress={onPress} disabled={loading} style={styles.actionBtn}>
+        <View style={[styles.actionIconBg, { backgroundColor: color + '15' }]}>
+            {loading ? <ActivityIndicator size="small" color={color} /> : <Ionicons name={icon} size={22} color={color} />}
+        </View>
+        <Text style={[styles.actionLabel, { color }]}>{label}</Text>
+    </TouchableOpacity>
+);
+
+const StatusIndicator = ({ status }: { status: string }) => {
+    let color = COLORS.success;
+    if (status === 'closed') color = COLORS.error;
+    if (status === 'inactive') color = COLORS.textSecondary;
+
+    return (
+        <View style={[styles.statusBadge, { backgroundColor: color + '10' }]}>
+            <View style={[styles.dot, { backgroundColor: color }]} />
+            <Text style={[styles.statusText, { color }]}>{status.toUpperCase()}</Text>
+        </View>
+    );
+};
+
+const ParticipantCard = ({ data, index }: any) => (
+    <View style={styles.pCard}>
+        <View style={styles.pTop}>
+            <View style={styles.pRank}>
+                <Text style={styles.pRankText}>#{index + 1}</Text>
+            </View>
+            <View style={styles.pInfo}>
+                <Text style={styles.pName}>{data.username}</Text>
+                <View style={styles.pRow}>
+                    <Ionicons name="call-outline" size={12} color={COLORS.textSecondary} />
+                    <Text style={styles.pPhone}>{data.phoneNumber || '99xxxxxx'}</Text>
+                </View>
+            </View>
+            <TouchableOpacity style={styles.pContact}>
+                <Ionicons name="logo-whatsapp" size={20} color="#25D366" />
+            </TouchableOpacity>
+        </View>
+
+        <View style={styles.pTeam}>
+            <Text style={styles.teamTitle}>OFFICIAL NAMES</Text>
+            <View style={styles.teamGrid}>
+                {data.teamMembers && data.teamMembers.length > 0 ? (
+                    data.teamMembers.map((m: string, i: number) => (
+                        <View key={i} style={styles.teamMember}>
+                            <View style={styles.memberDot} />
+                            <Text style={styles.memberName} numberOfLines={1}>{m}</Text>
+                        </View>
+                    ))
+                ) : (
+                    <View style={styles.teamMember}>
+                        <View style={styles.memberDot} />
+                        <Text style={styles.memberName}>{data.freeFireName || 'Unknown'}</Text>
+                    </View>
+                )}
+            </View>
+        </View>
+    </View>
+);
 
 const styles = StyleSheet.create({
     container: {
@@ -587,477 +440,347 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: COLORS.background,
     },
-    errorText: {
-        color: COLORS.error,
-        fontSize: 16,
-        marginBottom: 20,
-    },
-    backButton: {
-        paddingVertical: 10,
-        paddingHorizontal: 20,
-        backgroundColor: COLORS.surface,
-        borderRadius: 8,
-    },
-    backButtonText: {
-        color: COLORS.text,
-    },
-    headerGradient: {
+    header: {
+        backgroundColor: COLORS.white,
         paddingTop: 60,
-        paddingBottom: 30,
-        paddingHorizontal: SPACING.m,
-        borderBottomLeftRadius: 24,
-        borderBottomRightRadius: 24,
+        paddingBottom: 24,
+        paddingHorizontal: 20,
+        borderBottomLeftRadius: 30,
+        borderBottomRightRadius: 30,
+        shadowColor: COLORS.black,
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.03,
+        shadowRadius: 20,
+        elevation: 5,
     },
-    headerBackBtn: {
-        position: 'absolute',
-        top: 50,
-        left: 20,
-        zIndex: 10,
-        padding: 8,
-        backgroundColor: 'rgba(0,0,0,0.2)',
-        borderRadius: 20,
-    },
-    headerContent: {
-        alignItems: 'center',
-        marginTop: 10,
-    },
-    badgeContainer: {
-        flexDirection: 'row',
-        gap: 8,
-        marginBottom: 12,
-    },
-    badge: {
-        paddingHorizontal: 12,
-        paddingVertical: 4,
-        borderRadius: 12,
-    },
-    badgeOpen: {
-        backgroundColor: COLORS.success,
-    },
-    badgeClosed: {
-        backgroundColor: COLORS.error,
-    },
-    badgeSecondary: {
-        backgroundColor: 'rgba(255,255,255,0.2)',
-        paddingHorizontal: 12,
-        paddingVertical: 4,
-        borderRadius: 12,
-    },
-    badgeText: {
-        color: 'white',
-        fontWeight: 'bold',
-        fontSize: 12,
-    },
-    title: {
-        fontSize: 24,
-        fontWeight: 'bold',
-        color: COLORS.white,
-        textAlign: 'center',
-    },
-    subtitle: {
-        color: 'rgba(255,255,255,0.7)',
-        fontSize: 14,
-        marginTop: 4,
-    },
-    content: {
-        padding: SPACING.m,
-        marginTop: -20,
-    },
-    grid: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        gap: 10,
-        marginBottom: SPACING.l,
-    },
-    infoCard: {
-        flex: 1,
-        minWidth: '45%',
-        backgroundColor: COLORS.surface,
-        padding: 12,
-        borderRadius: 12,
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 10,
-        borderWidth: 1,
-        borderColor: COLORS.border,
-    },
-    iconContainer: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        backgroundColor: 'rgba(99, 102, 241, 0.1)',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    infoLabel: {
-        color: COLORS.textSecondary,
-        fontSize: 12,
-    },
-    infoValue: {
-        color: COLORS.text,
-        fontWeight: 'bold',
-        fontSize: 14,
-    },
-    section: {
-        marginBottom: SPACING.l,
-    },
-    sectionTitle: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        color: COLORS.text,
-        marginBottom: 12,
-    },
-    card: {
-        backgroundColor: COLORS.surface,
-        borderRadius: 16,
-        padding: SPACING.m,
-        borderWidth: 1,
-        borderColor: COLORS.border,
-    },
-    inputGroup: {
-        marginBottom: 16,
-    },
-    label: {
-        color: COLORS.textSecondary,
-        marginBottom: 8,
-        fontWeight: '500',
-    },
-    input: {
-        backgroundColor: COLORS.background,
-        color: COLORS.text,
-        padding: 12,
-        borderRadius: 10,
-        borderWidth: 1,
-        borderColor: COLORS.border,
-        fontSize: 16,
-    },
-    updateButton: {
-        borderRadius: 10,
-        overflow: 'hidden',
-        marginTop: 8,
-    },
-    gradientButton: {
-        paddingVertical: 14,
-        alignItems: 'center',
-    },
-    buttonText: {
-        color: 'white',
-        fontWeight: 'bold',
-        fontSize: 16,
-    },
-    disabledButton: {
-        opacity: 0.7,
-    },
-    rowBetween: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 12,
-    },
-    highlight: {
-        color: COLORS.primaryLight,
-    },
-    actionButtonsRow: {
-        flexDirection: 'row',
-        gap: 8,
-    },
-    notifyBtn: {
-        borderRadius: 20,
-        overflow: 'hidden',
-    },
-    distributeBtn: {
-        borderRadius: 20,
-        overflow: 'hidden',
-    },
-    gradientBadge: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 16,
-        paddingVertical: 8,
-    },
-    distributeText: {
-        color: 'white',
-        fontWeight: 'bold',
-        fontSize: 12,
-    },
-    participantRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingVertical: 12,
-        borderBottomWidth: 1,
-        borderBottomColor: 'rgba(255,255,255,0.05)',
-    },
-    rankContainer: {
-        width: 28,
-        height: 28,
+    backBtn: {
+        width: 44,
+        height: 44,
         borderRadius: 14,
         backgroundColor: COLORS.background,
         justifyContent: 'center',
         alignItems: 'center',
-        marginRight: 12,
+        marginBottom: 20,
         borderWidth: 1,
         borderColor: COLORS.border,
     },
-    rankText: {
-        color: COLORS.textSecondary,
-        fontSize: 12,
-        fontWeight: 'bold',
+    headerInfo: {
+        gap: 6,
     },
-    participantInfo: {
-        flex: 1,
+    statusBadgeRow: {
+        flexDirection: 'row',
+        gap: 10,
+        marginBottom: 6,
     },
-    pName: {
-        color: COLORS.text,
-        fontWeight: 'bold',
-        fontSize: 15,
-    },
-    pSub: {
-        color: COLORS.textSecondary,
-        fontSize: 12,
-    },
-    phoneContainer: {
+    statusBadge: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 4,
-        backgroundColor: COLORS.background,
-        paddingHorizontal: 8,
-        paddingVertical: 4,
+        gap: 6,
+        paddingHorizontal: 12,
+        paddingVertical: 5,
         borderRadius: 8,
     },
-    phoneText: {
+    dot: {
+        width: 6,
+        height: 6,
+        borderRadius: 3,
+    },
+    statusText: {
+        fontSize: 10,
+        fontFamily: 'Poppins_700Bold',
+        letterSpacing: 0.5,
+    },
+    typeBadge: {
+        backgroundColor: COLORS.background,
+        paddingHorizontal: 12,
+        paddingVertical: 5,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+    },
+    typeBadgeText: {
+        fontSize: 10,
+        fontFamily: 'Poppins_700Bold',
         color: COLORS.textSecondary,
+    },
+    matchTitle: {
+        fontSize: 24,
+        fontFamily: 'Poppins_700Bold',
+        color: COLORS.text,
+    },
+    matchNo: {
         fontSize: 12,
-    },
-    emptyText: {
+        fontFamily: 'Poppins_600SemiBold',
         color: COLORS.textSecondary,
-        textAlign: 'center',
-        padding: 20,
+        letterSpacing: 1,
     },
-    // Admin Status Control Styles
-    statusRow: {
+    card: {
+        backgroundColor: COLORS.white,
+        borderRadius: 24,
+        padding: 20,
+        marginHorizontal: 20,
+        marginTop: 20,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        shadowColor: COLORS.black,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.02,
+        shadowRadius: 10,
+        elevation: 2,
+    },
+    infoGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 16,
+    },
+    infoBox: {
+        width: (width - 80) / 2,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+    },
+    infoIconBg: {
+        width: 40,
+        height: 40,
+        borderRadius: 12,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    infoLabel: {
+        fontSize: 10,
+        fontFamily: 'Poppins_600SemiBold',
+        color: COLORS.textSecondary,
+        textTransform: 'uppercase',
+    },
+    infoValue: {
+        fontSize: 13,
+        fontFamily: 'Poppins_700Bold',
+        color: COLORS.text,
+    },
+    cardHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        marginBottom: 16,
+    },
+    cardTitle: {
+        fontSize: 11,
+        fontFamily: 'Poppins_700Bold',
+        color: COLORS.primary,
+        letterSpacing: 1,
+    },
+    inputRow: {
+        flexDirection: 'row',
+        gap: 12,
+        marginBottom: 16,
+    },
+    inputGroup: {
+        flex: 1,
+    },
+    label: {
+        fontSize: 12,
+        fontFamily: 'Poppins_600SemiBold',
+        color: COLORS.text,
+        marginBottom: 6,
+    },
+    input: {
+        backgroundColor: COLORS.background,
+        borderRadius: 12,
+        padding: 12,
+        fontFamily: 'Poppins_500Medium',
+        fontSize: 14,
+        color: COLORS.text,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+    },
+    updateBtn: {
+        overflow: 'hidden',
+        borderRadius: 14,
+    },
+    gradientBtn: {
+        flexDirection: 'row',
+        height: 54,
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: 8,
+    },
+    updateText: {
+        color: COLORS.white,
+        fontFamily: 'Poppins_700Bold',
+        fontSize: 15,
+    },
+    actionsRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        paddingVertical: 16,
+    },
+    actionBtn: {
+        flex: 1,
+        alignItems: 'center',
+        gap: 8,
+    },
+    actionIconBg: {
+        width: 54,
+        height: 54,
+        borderRadius: 18,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    actionLabel: {
+        fontSize: 9,
+        fontFamily: 'Poppins_700Bold',
+        letterSpacing: 0.5,
+    },
+    partHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
+        paddingHorizontal: 24,
+        marginTop: 24,
         marginBottom: 12,
     },
-    currentStatus: {
-        flex: 1,
+    partTitle: {
+        fontSize: 18,
+        fontFamily: 'Poppins_700Bold',
+        color: COLORS.text,
     },
-    statusBadge: {
+    partCount: {
+        backgroundColor: COLORS.white,
         paddingHorizontal: 12,
-        paddingVertical: 6,
-        borderRadius: 8,
-        alignSelf: 'flex-start',
-        marginTop: 6,
+        paddingVertical: 4,
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: COLORS.border,
     },
-    statusActive: {
-        backgroundColor: COLORS.success,
-    },
-    statusClosed: {
-        backgroundColor: COLORS.error,
-    },
-    statusInactive: {
-        backgroundColor: COLORS.textSecondary,
-    },
-    statusBadgeText: {
-        color: 'white',
-        fontWeight: 'bold',
+    countText: {
         fontSize: 12,
+        fontFamily: 'Poppins_700Bold',
+        color: COLORS.primary,
     },
-    statusActions: {
-        flexDirection: 'row',
-        gap: 8,
-    },
-    statusButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 16,
-        paddingVertical: 10,
-        borderRadius: 8,
-        gap: 6,
-    },
-    activateButton: {
-        backgroundColor: COLORS.success,
-    },
-    closeButton: {
-        backgroundColor: COLORS.error,
-    },
-    statusButtonText: {
-        color: 'white',
-        fontWeight: 'bold',
-        fontSize: 14,
-    },
-    closedNote: {
-        color: COLORS.textSecondary,
-        fontStyle: 'italic',
-    },
-    statusHint: {
-        color: COLORS.textSecondary,
-        fontSize: 12,
-        fontStyle: 'italic',
-    },
-    // New Participant Card Styles
     participantsList: {
+        paddingHorizontal: 20,
         gap: 12,
     },
-    participantCard: {
-        backgroundColor: COLORS.surface,
-        borderRadius: 16,
+    pCard: {
+        backgroundColor: COLORS.white,
+        borderRadius: 20,
         padding: 16,
         borderWidth: 1,
         borderColor: COLORS.border,
     },
-    participantHeader: {
+    pTop: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginBottom: 12,
         gap: 12,
+        marginBottom: 14,
     },
-    teamNumberBadge: {
-        width: 44,
-        height: 44,
-        borderRadius: 22,
+    pRank: {
+        width: 38,
+        height: 38,
+        borderRadius: 12,
+        backgroundColor: COLORS.background,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: COLORS.border,
+    },
+    pRankText: {
+        fontSize: 14,
+        fontFamily: 'Poppins_700Bold',
+        color: COLORS.text,
+    },
+    pInfo: {
+        flex: 1,
+    },
+    pName: {
+        fontSize: 15,
+        fontFamily: 'Poppins_700Bold',
+        color: COLORS.text,
+    },
+    pRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    pPhone: {
+        fontSize: 12,
+        fontFamily: 'Poppins_500Medium',
+        color: COLORS.textSecondary,
+    },
+    pContact: {
+        width: 40,
+        height: 40,
+        borderRadius: 12,
+        backgroundColor: '#25D36610',
         justifyContent: 'center',
         alignItems: 'center',
     },
-    teamNumberText: {
-        color: 'white',
-        fontWeight: 'bold',
-        fontSize: 16,
+    pTeam: {
+        backgroundColor: COLORS.background,
+        borderRadius: 14,
+        padding: 12,
     },
-    participantHeaderInfo: {
-        flex: 1,
+    teamTitle: {
+        fontSize: 9,
+        fontFamily: 'Poppins_700Bold',
+        color: COLORS.textSecondary,
+        letterSpacing: 1,
+        marginBottom: 8,
     },
-    participantUsername: {
-        color: COLORS.text,
-        fontWeight: 'bold',
-        fontSize: 16,
-        marginBottom: 2,
+    teamGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 10,
     },
-    contactRow: {
+    teamMember: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 6,
-    },
-    participantPhone: {
-        color: COLORS.textSecondary,
-        fontSize: 13,
-    },
-    teamSection: {
-        backgroundColor: COLORS.background,
-        borderRadius: 12,
-        padding: 12,
-    },
-    teamSectionLabel: {
-        color: COLORS.textSecondary,
-        fontSize: 13,
-        fontWeight: '600',
-        marginBottom: 10,
-    },
-    teamMembersGrid: {
-        gap: 8,
-    },
-    memberCard: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: COLORS.surface,
-        padding: 10,
-        borderRadius: 10,
+        backgroundColor: COLORS.white,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 8,
         borderWidth: 1,
         borderColor: COLORS.border,
-        gap: 10,
     },
-    memberIndex: {
-        width: 26,
-        height: 26,
-        borderRadius: 13,
+    memberDot: {
+        width: 6,
+        height: 6,
+        borderRadius: 3,
         backgroundColor: COLORS.primary,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    memberIndexText: {
-        color: 'white',
-        fontWeight: 'bold',
-        fontSize: 12,
     },
     memberName: {
-        flex: 1,
+        fontSize: 12,
+        fontFamily: 'Poppins_600SemiBold',
         color: COLORS.text,
-        fontSize: 14,
-        fontWeight: '500',
     },
-    // Modal Styles
-    modalOverlay: {
-        flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.7)',
-        justifyContent: 'center',
+    emptyPart: {
         alignItems: 'center',
-        padding: 20,
+        padding: 40,
+        gap: 16,
     },
-    modalContent: {
-        backgroundColor: COLORS.surface,
-        borderRadius: 16,
-        padding: 20,
-        width: '100%',
-        maxWidth: 400,
-        borderWidth: 1,
-        borderColor: COLORS.border,
-    },
-    modalTitle: {
-        fontSize: 20,
-        fontWeight: 'bold',
-        color: COLORS.text,
-        marginBottom: 8,
-    },
-    modalSubtitle: {
+    emptyText: {
         fontSize: 14,
+        fontFamily: 'Poppins_500Medium',
         color: COLORS.textSecondary,
-        marginBottom: 16,
+        textAlign: 'center',
     },
-    modalInput: {
-        backgroundColor: COLORS.background,
-        borderRadius: 10,
-        padding: 12,
-        color: COLORS.text,
+    errorText: {
         fontSize: 16,
-        minHeight: 80,
-        textAlignVertical: 'top',
-        borderWidth: 1,
-        borderColor: COLORS.border,
-        marginBottom: 16,
+        fontFamily: 'Poppins_600SemiBold',
+        color: COLORS.error,
+        marginTop: 16,
+        marginBottom: 20,
     },
-    modalButtons: {
-        flexDirection: 'row',
-        gap: 12,
+    backButton: {
+        backgroundColor: COLORS.primary,
+        paddingVertical: 12,
+        paddingHorizontal: 24,
+        borderRadius: 12,
     },
-    modalCancelButton: {
-        flex: 1,
-        padding: 14,
-        borderRadius: 10,
-        backgroundColor: COLORS.background,
-        alignItems: 'center',
-        borderWidth: 1,
-        borderColor: COLORS.border,
-    },
-    modalCancelText: {
-        color: COLORS.text,
-        fontWeight: '600',
-        fontSize: 16,
-    },
-    modalSendButton: {
-        flex: 1,
-        borderRadius: 10,
-        overflow: 'hidden',
-    },
-    modalSendGradient: {
-        padding: 14,
-        alignItems: 'center',
-    },
-    modalSendText: {
-        color: 'white',
-        fontWeight: 'bold',
-        fontSize: 16,
+    backButtonText: {
+        color: COLORS.white,
+        fontFamily: 'Poppins_700Bold',
     },
 });

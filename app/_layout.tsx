@@ -27,8 +27,9 @@ export default function RootLayout() {
     return null;
   }
 
-  const MyDarkTheme = {
+  const MyLightTheme = {
     ...DarkTheme,
+    dark: false,
     colors: {
       ...DarkTheme.colors,
       background: COLORS.background,
@@ -40,23 +41,21 @@ export default function RootLayout() {
   };
 
   return (
-    <ThemeProvider value={MyDarkTheme}>
+    <ThemeProvider value={MyLightTheme}>
       <Stack
         screenOptions={{
           headerStyle: { backgroundColor: COLORS.backgroundLight },
           headerTintColor: COLORS.text,
           headerTitleStyle: { fontFamily: 'Poppins_600SemiBold' },
+          headerShadowVisible: false,
           contentStyle: { backgroundColor: COLORS.background },
         }}
       >
-        <Stack.Screen name="index" options={{ title: 'Admin Dashboard' }} />
-        <Stack.Screen name="create-match" options={{ title: 'Create Match', presentation: 'modal' }} />
-        <Stack.Screen name="match/[id]" options={{ title: 'Match Details' }} />
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="match/[id]" options={{ title: 'Edit Match' }} />
         <Stack.Screen name="distribute/[id]" options={{ title: 'Distribute Prizes' }} />
-        <Stack.Screen name="notifications" options={{ title: 'Send Notification' }} />
-        <Stack.Screen name="+not-found" />
       </Stack>
-      <StatusBar style="light" />
+      <StatusBar style="dark" />
     </ThemeProvider>
   );
 }
