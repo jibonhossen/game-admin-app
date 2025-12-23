@@ -94,5 +94,16 @@ export const notificationApi = {
     },
 };
 
+export const userApi = {
+    getAllUsers: async () => {
+        const response = await api.get('/api/admin/users');
+        return response.data;
+    },
+    updateUserStatus: async (userId: string, status: 'active' | 'blocked') => {
+        const response = await api.put(`/api/admin/user-status/${userId}`, { status });
+        return response.data;
+    },
+};
+
 export default api;
 

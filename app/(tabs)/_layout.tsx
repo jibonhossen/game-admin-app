@@ -70,6 +70,16 @@ export default function TabLayout() {
                 }}
             />
             <Tabs.Screen
+                name="users"
+                options={{
+                    title: 'Users',
+                    tabBarLabel: 'Users',
+                    tabBarIcon: ({ color, size }) => (
+                        <Ionicons name="people" size={size} color={color} />
+                    ),
+                }}
+            />
+            <Tabs.Screen
                 name="settings"
                 options={{
                     title: 'Configuration',
