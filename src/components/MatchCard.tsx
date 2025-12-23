@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { COLORS, SPACING, FONTS } from '../constants/theme';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { matchApi } from '../services/api';
+import { useAlert } from '../contexts/AlertContext';
 
 interface MatchCardProps {
     match: any;
@@ -13,6 +14,7 @@ interface MatchCardProps {
 
 export const MatchCard: React.FC<MatchCardProps> = ({ match, onUpdate, onDelete }) => {
     const router = useRouter();
+    const { showAlert } = useAlert();
     const [updating, setUpdating] = useState(false);
 
     const handlePress = () => {
@@ -27,36 +29,31 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, onUpdate, onDelete 
             if (onUpdate) onUpdate();
         } catch (error) {
             console.error('Status update error:', error);
-            Alert.alert('Error', 'Failed to update status');
+            showAlert({ title: 'Error', message: 'Failed to update status', type: 'error' });
         } finally {
             setUpdating(false);
         }
     };
 
     const handleDelete = () => {
-        Alert.alert(
-            'Delete Match',
-            'Are you sure you want to delete this match? This action cannot be undone.',
-            [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                    text: 'Delete',
-                    style: 'destructive',
-                    onPress: async () => {
-                        try {
-                            setUpdating(true);
-                            await matchApi.deleteMatch(match.id);
-                            if (onDelete) onDelete(match.id);
-                        } catch (error) {
-                            console.error('Delete error:', error);
-                            Alert.alert('Error', 'Failed to delete match');
-                        } finally {
-                            setUpdating(false);
-                        }
-                    }
+        showAlert({
+            title: 'Delete Match',
+            message: 'Are you sure you want to delete this match? This action cannot be undone.',
+            type: 'confirm',
+            onConfirm: async () => {
+                try {
+                    setUpdating(true);
+                    await matchApi.deleteMatch(match.id);
+                    if (onDelete) onDelete(match.id);
+                    showAlert({ title: 'Success', message: 'Match deleted successfully', type: 'success' });
+                } catch (error) {
+                    console.error('Delete error:', error);
+                    showAlert({ title: 'Error', message: 'Failed to delete match', type: 'error' });
+                } finally {
+                    setUpdating(false);
                 }
-            ]
-        );
+            }
+        });
     };
 
     const getStatusColor = (status: string) => {

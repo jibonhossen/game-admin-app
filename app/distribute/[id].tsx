@@ -1,17 +1,19 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, FlatList, TextInput, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, StatusBar, KeyboardAvoidingView, Platform, Dimensions } from 'react-native';
+import { View, Text, FlatList, TextInput, StyleSheet, TouchableOpacity, ActivityIndicator, StatusBar, KeyboardAvoidingView, Platform, Dimensions } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { COLORS, SPACING, FONTS } from '../../src/constants/theme';
 import { matchApi } from '../../src/services/api';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAlert } from '../../src/contexts/AlertContext';
 
 const { width } = Dimensions.get('window');
 
 export default function DistributePrizes() {
     const { id } = useLocalSearchParams();
     const router = useRouter();
+    const { showAlert } = useAlert();
     const insets = useSafeAreaInsets();
     const [participants, setParticipants] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -28,7 +30,7 @@ export default function DistributePrizes() {
             const data = await matchApi.getParticipants(id as string);
             setParticipants(data);
         } catch (error) {
-            Alert.alert('Error', 'Failed to fetch participants');
+            showAlert({ title: 'Error', message: 'Failed to fetch participants', type: 'error' });
         } finally {
             setLoading(false);
         }
@@ -50,34 +52,31 @@ export default function DistributePrizes() {
         const winners = getWinners();
 
         if (winners.length === 0) {
-            Alert.alert('Required', 'Please enter prize amounts for at least one winner.');
+            showAlert({ title: 'Required', message: 'Please enter prize amounts for at least one winner.', type: 'warning' });
             return;
         }
 
-        Alert.alert(
-            'Confirm Payout',
-            `You are about to distribute ৳${totalPrize} to ${winners.length} winners. This action cannot be reversed.`,
-            [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                    text: 'Confirm & Send',
-                    style: 'destructive',
-                    onPress: async () => {
-                        try {
-                            setDistributing(true);
-                            await matchApi.distributePrizes({ matchId: id as string, winners });
-                            Alert.alert('Success', 'Prizes distributed successfully!', [
-                                { text: 'Done', onPress: () => router.back() }
-                            ]);
-                        } catch (error) {
-                            Alert.alert('Error', 'Failed to distribute prizes');
-                        } finally {
-                            setDistributing(false);
-                        }
-                    }
+        showAlert({
+            title: 'Confirm Payout',
+            message: `You are about to distribute ৳${totalPrize} to ${winners.length} winners. This action cannot be reversed.`,
+            type: 'confirm',
+            onConfirm: async () => {
+                try {
+                    setDistributing(true);
+                    await matchApi.distributePrizes({ matchId: id as string, winners });
+                    showAlert({
+                        title: 'Success',
+                        message: 'Prizes distributed successfully!',
+                        type: 'success',
+                        onConfirm: () => router.back()
+                    });
+                } catch (error) {
+                    showAlert({ title: 'Error', message: 'Failed to distribute prizes', type: 'error' });
+                } finally {
+                    setDistributing(false);
                 }
-            ]
-        );
+            }
+        });
     };
 
     const renderItem = ({ item, index }: { item: any, index: number }) => (

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform, ActivityIndicator, KeyboardAvoidingView } from 'react-native';
+import { View, Text, TextInput, StyleSheet, ScrollView, TouchableOpacity, Platform, ActivityIndicator, KeyboardAvoidingView } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
 import { COLORS, SPACING, FONTS } from '../../src/constants/theme';
 import { matchApi } from '../../src/services/api';
@@ -7,9 +7,11 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAlert } from '../../src/contexts/AlertContext';
 
 export default function CreateMatch() {
     const router = useRouter();
+    const { showAlert } = useAlert();
     const insets = useSafeAreaInsets();
     const [loading, setLoading] = useState(false);
     const [config, setConfig] = useState<any>(null);
@@ -68,7 +70,7 @@ export default function CreateMatch() {
 
     const handleSubmit = async () => {
         if (!formData.title || !formData.entryFee || !formData.totalSlots) {
-            Alert.alert('Required', 'Please fill in Title, Entry Fee, and Total Slots.');
+            showAlert({ title: 'Required', message: 'Please fill in Title, Entry Fee, and Total Slots.', type: 'warning' });
             return;
         }
 
@@ -98,11 +100,14 @@ export default function CreateMatch() {
                 prizeDetails: formData.prizeDetails
             });
 
-            Alert.alert('Success', 'Match created successfully!', [
-                { text: 'Great', onPress: () => router.replace('/') }
-            ]);
+            showAlert({
+                title: 'Success',
+                message: 'Match created successfully!',
+                type: 'success',
+                onConfirm: () => router.replace('/')
+            });
         } catch (error: any) {
-            Alert.alert('Error', error.response?.data?.message || 'Failed to create match');
+            showAlert({ title: 'Error', message: error.response?.data?.message || 'Failed to create match', type: 'error' });
         } finally {
             setLoading(false);
         }

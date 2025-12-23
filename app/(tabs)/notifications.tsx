@@ -5,7 +5,6 @@ import {
     TextInput,
     StyleSheet,
     TouchableOpacity,
-    Alert,
     ScrollView,
     StatusBar,
     ActivityIndicator,
@@ -18,6 +17,7 @@ import { COLORS, SPACING } from '../../src/constants/theme';
 import { notificationApi } from '../../src/services/api';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useAlert } from '../../src/contexts/AlertContext';
 
 export default function NotificationsPage() {
     const router = useRouter();
@@ -25,51 +25,46 @@ export default function NotificationsPage() {
     const [body, setBody] = useState('');
     const [imageUrl, setImageUrl] = useState('');
     const [sending, setSending] = useState(false);
+    const { showAlert } = useAlert();
 
     const handleSendToAll = async () => {
         if (!title.trim() || !body.trim()) {
-            Alert.alert('Required', 'Please fill in both title and message.');
+            showAlert({ title: 'Required', message: 'Please fill in both title and message.', type: 'warning' });
             return;
         }
 
-        Alert.alert(
-            'Confirm Broadcast',
-            'Are you sure you want to send this notification to ALL users?',
-            [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                    text: 'Send to All',
-                    style: 'destructive',
-                    onPress: async () => {
-                        try {
-                            setSending(true);
-                            const result = await notificationApi.sendNotification({
-                                title: title.trim(),
-                                body: body.trim(),
-                                imageUrl: imageUrl.trim() || undefined,
-                                targetType: 'all',
-                            });
+        showAlert({
+            title: 'Confirm Broadcast',
+            message: 'Are you sure you want to send this notification to ALL users?',
+            type: 'confirm',
+            onConfirm: async () => {
+                try {
+                    setSending(true);
+                    const result = await notificationApi.sendNotification({
+                        title: title.trim(),
+                        body: body.trim(),
+                        imageUrl: imageUrl.trim() || undefined,
+                        targetType: 'all',
+                    });
 
-                            const stats = result.stats;
-                            let alertMessage = `✅ Broadcast successful!\n\n`;
-                            alertMessage += `📱 Targeted: ${stats?.targetedTokens || 0}\n`;
-                            alertMessage += `✓ Success: ${stats?.successful || 0}\n`;
-                            alertMessage += `✗ Failed: ${stats?.failed || 0}`;
+                    const stats = result.stats;
+                    let alertMessage = `✅ Broadcast successful!\n\n`;
+                    alertMessage += `📱 Targeted: ${stats?.targetedTokens || 0}\n`;
+                    alertMessage += `✓ Success: ${stats?.successful || 0}\n`;
+                    alertMessage += `✗ Failed: ${stats?.failed || 0}`;
 
-                            Alert.alert('Broadcast Completed', alertMessage);
-                            setTitle('');
-                            setBody('');
-                            setImageUrl('');
-                        } catch (error: any) {
-                            const errorMessage = error.response?.data?.error || error.message || 'Failed to send notification';
-                            Alert.alert('Broadcast Error', errorMessage);
-                        } finally {
-                            setSending(false);
-                        }
-                    }
+                    showAlert({ title: 'Broadcast Completed', message: alertMessage, type: 'success' });
+                    setTitle('');
+                    setBody('');
+                    setImageUrl('');
+                } catch (error: any) {
+                    const errorMessage = error.response?.data?.error || error.message || 'Failed to send notification';
+                    showAlert({ title: 'Broadcast Error', message: errorMessage, type: 'error' });
+                } finally {
+                    setSending(false);
                 }
-            ]
-        );
+            }
+        });
     };
 
     return (

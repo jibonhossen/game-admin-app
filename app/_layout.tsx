@@ -6,6 +6,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { COLORS } from '../src/constants/theme';
 import { View } from 'react-native';
+import { AlertProvider } from '../src/contexts/AlertContext';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -41,21 +42,23 @@ export default function RootLayout() {
   };
 
   return (
-    <ThemeProvider value={MyLightTheme}>
-      <Stack
-        screenOptions={{
-          headerStyle: { backgroundColor: COLORS.backgroundLight },
-          headerTintColor: COLORS.text,
-          headerTitleStyle: { fontFamily: 'Poppins_600SemiBold' },
-          headerShadowVisible: false,
-          contentStyle: { backgroundColor: COLORS.background },
-        }}
-      >
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="match/[id]" options={{ title: 'Edit Match' }} />
-        <Stack.Screen name="distribute/[id]" options={{ title: 'Distribute Prizes' }} />
-      </Stack>
-      <StatusBar style="dark" />
-    </ThemeProvider>
+    <AlertProvider>
+      <ThemeProvider value={MyLightTheme}>
+        <Stack
+          screenOptions={{
+            headerStyle: { backgroundColor: COLORS.backgroundLight },
+            headerTintColor: COLORS.text,
+            headerTitleStyle: { fontFamily: 'Poppins_600SemiBold' },
+            headerShadowVisible: false,
+            contentStyle: { backgroundColor: COLORS.background },
+          }}
+        >
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="match/[id]" options={{ title: 'Edit Match' }} />
+          <Stack.Screen name="distribute/[id]" options={{ title: 'Distribute Prizes' }} />
+        </Stack>
+        <StatusBar style="dark" />
+      </ThemeProvider>
+    </AlertProvider>
   );
 }

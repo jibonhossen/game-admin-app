@@ -1,17 +1,19 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TextInput, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, StatusBar, Modal, Dimensions } from 'react-native';
+import { View, Text, ScrollView, TextInput, StyleSheet, TouchableOpacity, ActivityIndicator, StatusBar, Modal, Dimensions } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { COLORS, SPACING, FONTS } from '../../src/constants/theme';
 import { matchApi, notificationApi } from '../../src/services/api';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAlert } from '../../src/contexts/AlertContext';
 
 const { width } = Dimensions.get('window');
 
 export default function MatchDetails() {
     const { id } = useLocalSearchParams();
     const router = useRouter();
+    const { showAlert } = useAlert();
     const insets = useSafeAreaInsets();
     const [match, setMatch] = useState<any>(null);
     const [participants, setParticipants] = useState<any[]>([]);
@@ -47,7 +49,7 @@ export default function MatchDetails() {
                 setParticipants(parts);
             }
         } catch (error) {
-            Alert.alert('Error', 'Failed to fetch match details');
+            showAlert({ title: 'Error', message: 'Failed to fetch match details', type: 'error' });
         } finally {
             setLoading(false);
         }
@@ -85,9 +87,9 @@ export default function MatchDetails() {
                 }).catch(err => console.error('Background notification failed:', err));
             }
 
-            Alert.alert('Success', 'Match updated successfully. Sending notification to participants...');
+            showAlert({ title: 'Success', message: 'Match updated successfully.', type: 'success' });
         } catch (error) {
-            Alert.alert('Error', 'Failed to update match');
+            showAlert({ title: 'Error', message: 'Failed to update match', type: 'error' });
         } finally {
             setUpdating(false);
         }
@@ -98,29 +100,23 @@ export default function MatchDetails() {
         const currentLabel = statusLabels[match.adminStatus as keyof typeof statusLabels] || 'Inactive';
         const newLabel = statusLabels[newStatus];
 
-        Alert.alert(
-            'Change Status',
-            `Are you sure you want to change status from "${currentLabel}" to "${newLabel}"? This cannot be undone.`,
-            [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                    text: 'Confirm',
-                    style: 'destructive',
-                    onPress: async () => {
-                        try {
-                            setChangingStatus(true);
-                            const result = await matchApi.changeAdminStatus(id as string, newStatus);
-                            Alert.alert('Success', result.message);
-                            setMatch(result.match);
-                        } catch (error: any) {
-                            Alert.alert('Error', error.response?.data?.error || 'Failed to change status');
-                        } finally {
-                            setChangingStatus(false);
-                        }
-                    }
+        showAlert({
+            title: 'Change Status',
+            message: `Are you sure you want to change status from "${currentLabel}" to "${newLabel}"? This cannot be undone.`,
+            type: 'confirm',
+            onConfirm: async () => {
+                try {
+                    setChangingStatus(true);
+                    const result = await matchApi.changeAdminStatus(id as string, newStatus);
+                    showAlert({ title: 'Success', message: result.message, type: 'success' });
+                    setMatch(result.match);
+                } catch (error: any) {
+                    showAlert({ title: 'Error', message: error.response?.data?.error || 'Failed to change status', type: 'error' });
+                } finally {
+                    setChangingStatus(false);
                 }
-            ]
-        );
+            }
+        });
     };
 
     const getTimeLeftString = () => {
@@ -170,7 +166,7 @@ export default function MatchDetails() {
 
     const handleSendNotification = async () => {
         if (participants.length === 0) {
-            Alert.alert('No Participants', 'There are no participants to notify.');
+            showAlert({ title: 'No Participants', message: 'There are no participants to notify.', type: 'warning' });
             return;
         }
 
@@ -199,9 +195,9 @@ export default function MatchDetails() {
                 console.error('Manual notification failed:', error);
             });
 
-            Alert.alert('Success', 'Notification delivery started in the background.');
+            showAlert({ title: 'Success', message: 'Notification delivery started in the background.', type: 'success' });
         } catch (error: any) {
-            Alert.alert('Error', 'Failed to initiate notification');
+            showAlert({ title: 'Error', message: 'Failed to initiate notification', type: 'error' });
         } finally {
             setSendingNotification(false);
         }

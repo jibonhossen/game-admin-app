@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
 import { COLORS, SPACING, FONTS } from '../../src/constants/theme';
 import { userApi } from '../../src/services/api';
 import { Ionicons } from '@expo/vector-icons';
+import { useAlert } from '../../src/contexts/AlertContext';
 
 interface User {
     id: string;
@@ -20,6 +21,7 @@ export default function UsersScreen() {
     const [users, setUsers] = useState<User[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    const { showAlert } = useAlert();
 
     useEffect(() => {
         fetchUsers();
@@ -32,7 +34,7 @@ export default function UsersScreen() {
             setUsers(data);
         } catch (error) {
             console.error('Failed to fetch users', error);
-            Alert.alert('Error', 'Failed to load users');
+            showAlert({ title: 'Error', message: 'Failed to load users', type: 'error' });
         } finally {
             setLoading(false);
             setRefreshing(false);
@@ -43,28 +45,22 @@ export default function UsersScreen() {
         const newStatus = user.status === 'active' ? 'blocked' : 'active';
         const action = newStatus === 'blocked' ? 'Block' : 'Unblock';
 
-        Alert.alert(
-            `${action} User`,
-            `Are you sure you want to ${action.toLowerCase()} ${user.username}?`,
-            [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                    text: action,
-                    style: newStatus === 'blocked' ? 'destructive' : 'default',
-                    onPress: async () => {
-                        try {
-                            setLoading(true);
-                            await userApi.updateUserStatus(user.id, newStatus);
-                            await fetchUsers(true);
-                        } catch (error) {
-                            Alert.alert('Error', `Failed to ${action.toLowerCase()} user`);
-                        } finally {
-                            setLoading(false);
-                        }
-                    }
+        showAlert({
+            title: `${action} User`,
+            message: `Are you sure you want to ${action.toLowerCase()} ${user.username}?`,
+            type: 'confirm',
+            onConfirm: async () => {
+                try {
+                    setLoading(true);
+                    await userApi.updateUserStatus(user.id, newStatus);
+                    await fetchUsers(true);
+                } catch (error) {
+                    showAlert({ title: 'Error', message: `Failed to ${action.toLowerCase()} user`, type: 'error' });
+                } finally {
+                    setLoading(false);
                 }
-            ]
-        );
+            }
+        });
     };
 
     const renderUser = ({ item }: { item: User }) => (

@@ -1,12 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, TextInput, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { COLORS, SPACING, FONTS } from '../../src/constants/theme';
 import { matchApi } from '../../src/services/api';
 import { Ionicons } from '@expo/vector-icons';
+import { useAlert } from '../../src/contexts/AlertContext';
 
 export default function ConfigScreen() {
     const router = useRouter();
+    const { showAlert } = useAlert();
     const [loading, setLoading] = useState(false);
     const [configs, setConfigs] = useState<any>({});
     const [activeTab, setActiveTab] = useState<'map' | 'category' | 'match_type'>('map');
@@ -26,7 +28,7 @@ export default function ConfigScreen() {
             setConfigs(data || {});
         } catch (error) {
             console.error('Failed to fetch configs', error);
-            Alert.alert('Error', 'Failed to load configurations');
+            showAlert({ title: 'Error', message: 'Failed to load configurations', type: 'error' });
         } finally {
             setLoading(false);
         }
@@ -34,7 +36,7 @@ export default function ConfigScreen() {
 
     const handleAdd = async () => {
         if (!newValue.trim()) {
-            Alert.alert('Error', 'Please enter a value');
+            showAlert({ title: 'Error', message: 'Please enter a value', type: 'error' });
             return;
         }
 
@@ -47,36 +49,32 @@ export default function ConfigScreen() {
             });
             setNewValue('');
             await fetchConfigs();
+            showAlert({ title: 'Success', message: 'Configuration added successfully', type: 'success' });
         } catch (error: any) {
-            Alert.alert('Error', error.response?.data?.message || 'Failed to add configuration');
+            showAlert({ title: 'Error', message: error.response?.data?.message || 'Failed to add configuration', type: 'error' });
         } finally {
             setAdding(false);
         }
     };
 
     const handleDelete = async (id: string, value: string) => {
-        Alert.alert(
-            'Confirm Delete',
-            `Are you sure you want to remove "${value}" from the ${activeTab.replace('_', ' ')} list?`,
-            [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                    text: 'Delete',
-                    style: 'destructive',
-                    onPress: async () => {
-                        try {
-                            setLoading(true);
-                            await matchApi.deleteConfig(id);
-                            await fetchConfigs();
-                        } catch (error) {
-                            Alert.alert('Error', 'Failed to delete');
-                        } finally {
-                            setLoading(false);
-                        }
-                    }
+        showAlert({
+            title: 'Confirm Delete',
+            message: `Are you sure you want to remove "${value}" from the ${activeTab.replace('_', ' ')} list?`,
+            type: 'confirm',
+            onConfirm: async () => {
+                try {
+                    setLoading(true);
+                    await matchApi.deleteConfig(id);
+                    await fetchConfigs();
+                    showAlert({ title: 'Success', message: 'Deleted successfully', type: 'success' });
+                } catch (error) {
+                    showAlert({ title: 'Error', message: 'Failed to delete', type: 'error' });
+                } finally {
+                    setLoading(false);
                 }
-            ]
-        );
+            }
+        });
     };
 
     const tabs: { key: 'map' | 'category' | 'match_type'; label: string; icon: any }[] = [
