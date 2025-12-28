@@ -46,7 +46,26 @@ export default function MatchDetails() {
                 setPrizeDetails(found.prizeDetails || '');
 
                 const parts = await matchApi.getParticipants(id as string);
-                setParticipants(parts);
+
+                // Check if participants have push tokens
+                if (parts.length > 0) {
+                    try {
+                        const userIds = parts.map((p: any) => p.uid);
+                        const { results } = await notificationApi.checkPushTokens(userIds);
+
+                        // Merge token status into participants
+                        const partsWithStatus = parts.map((p: any) => {
+                            const status = results.find((r: any) => r.userId === p.uid);
+                            return { ...p, hasToken: status ? status.hasToken : false };
+                        });
+                        setParticipants(partsWithStatus);
+                    } catch (err) {
+                        console.error('Failed to check tokens', err);
+                        setParticipants(parts);
+                    }
+                } else {
+                    setParticipants(parts);
+                }
             }
         } catch (error) {
             showAlert({ title: 'Error', message: 'Failed to fetch match details', type: 'error' });
@@ -61,9 +80,12 @@ export default function MatchDetails() {
             await matchApi.updateMatch(id as string, { customId, password, prizeDetails });
             setMatch((prev: any) => ({ ...prev, customId, password, prizeDetails }));
 
+            let notificationMessage = '';
+
             // Send notification in background to participants if room details provided
             if (participants.length > 0 && (customId || password)) {
                 // Construct notification payload
+                const participantsToNotify = participants.filter((p: any) => p.hasToken);
                 const userIds = participants.map((p: any) => p.uid);
                 const timeLeft = getTimeLeftString();
 
@@ -76,18 +98,34 @@ export default function MatchDetails() {
                 if (password) notifyBody += `\n🔑 Password: ${password}`;
                 if (timeLeft) notifyBody += `\n\n⏳ ${timeLeft}`;
 
-                // Fire and forget (it will complete in background)
-                notificationApi.sendNotification({
-                    title: `${match.title} - Match #${match.matchNo}`,
-                    body: notifyBody,
-                    data: { screen: 'match-list', matchId: id },
-                    targetType: 'specific',
-                    userIds,
-                    skipSave: true,
-                }).catch(err => console.error('Background notification failed:', err));
+                try {
+                    await notificationApi.sendNotification({
+                        title: `${match.title} - Match #${match.matchNo}`,
+                        body: notifyBody,
+                        data: { screen: 'match-list', matchId: id },
+                        targetType: 'specific',
+                        userIds,
+                        skipSave: true,
+                    });
+
+                    const unreachableCount = participants.length - participantsToNotify.length;
+                    if (unreachableCount > 0) {
+                        notificationMessage = ` Notifications sent. (Note: ${unreachableCount} users have no registered device)`;
+                    } else {
+                        notificationMessage = ' Notifications sent.';
+                    }
+                } catch (err: any) {
+                    if (err.response && err.response.status === 404) {
+                        notificationMessage = '\n\n(Warning: No devices found to notify)';
+                        console.log('Background notification: No devices to notify.');
+                    } else {
+                        notificationMessage = '\n\n(Warning: Notification failed)';
+                        console.error('Background notification failed:', err);
+                    }
+                }
             }
 
-            showAlert({ title: 'Success', message: 'Match updated successfully.', type: 'success' });
+            showAlert({ title: 'Success', message: 'Match updated successfully.' + notificationMessage, type: 'success' });
         } catch (error) {
             showAlert({ title: 'Error', message: 'Failed to update match', type: 'error' });
         } finally {
@@ -192,7 +230,12 @@ export default function MatchDetails() {
                 userIds,
                 skipSave: true,
             }).catch(error => {
-                console.error('Manual notification failed:', error);
+                if (error.response && error.response.status === 404) {
+                    showAlert({ title: 'Info', message: 'No registered devices found for these users.', type: 'warning' });
+                } else {
+                    console.error('Manual notification failed:', error);
+                    showAlert({ title: 'Error', message: 'Failed to send notification in background.', type: 'error' });
+                }
             });
 
             showAlert({ title: 'Success', message: 'Notification delivery started in the background.', type: 'success' });
@@ -424,6 +467,12 @@ const ParticipantCard = ({ data, index }: any) => (
                 <View style={styles.pRow}>
                     <Ionicons name="call-outline" size={12} color={COLORS.textSecondary} />
                     <Text style={styles.pPhone}>{data.phoneNumber || '99xxxxxx'}</Text>
+                    {!data.hasToken && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 6, backgroundColor: '#FECACA', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                            <Ionicons name="notifications-off-outline" size={10} color="#DC2626" />
+                            <Text style={{ fontSize: 9, color: '#DC2626', marginLeft: 2, fontFamily: 'Poppins_600SemiBold' }}>No Device</Text>
+                        </View>
+                    )}
                 </View>
             </View>
             <TouchableOpacity style={styles.pContact}>

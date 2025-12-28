@@ -92,6 +92,13 @@ export const notificationApi = {
         const response = await notificationAxios.post('/api/send', data);
         return response.data;
     },
+    /**
+     * Check which users have registered tokens
+     */
+    checkPushTokens: async (userIds: string[]) => {
+        const response = await notificationAxios.post('/api/check-tokens', { userIds });
+        return response.data;
+    },
 };
 
 export const userApi = {
