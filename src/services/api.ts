@@ -162,6 +162,34 @@ export const notificationApi = {
     },
 };
 
+// Auth API
+export const setAuthToken = (token: string | null) => {
+    if (token) {
+        api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    } else {
+        delete api.defaults.headers.common['Authorization'];
+    }
+};
+
+export const authApi = {
+    login: async (credentials: any) => {
+        const response = await api.post('/api/auth/admin/login', credentials);
+        return response.data;
+    },
+    getMe: async () => {
+        const response = await api.get('/api/auth/admin/me');
+        return response.data;
+    },
+    createSubAdmin: async (data: any) => {
+        const response = await api.post('/api/auth/admin/create-subadmin', data);
+        return response.data;
+    },
+    getSubAdmins: async () => {
+        const response = await api.get('/api/auth/admin/subadmins');
+        return response.data;
+    },
+};
+
 export const userApi = {
     getAllUsers: async () => {
         const response = await api.get('/api/admin/users');
