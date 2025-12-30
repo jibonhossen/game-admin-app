@@ -60,6 +60,16 @@ export default function TabLayout() {
                 }}
             />
             <Tabs.Screen
+                name="templates"
+                options={{
+                    title: 'Templates',
+                    tabBarLabel: 'Templates',
+                    tabBarIcon: ({ color, size }) => (
+                        <Ionicons name="document-text" size={size} color={color} />
+                    ),
+                }}
+            />
+            <Tabs.Screen
                 name="notifications"
                 options={{
                     title: 'Direct Alert',

@@ -1,4 +1,65 @@
 import axios from 'axios';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// Template Types
+export interface MatchTemplate {
+    id: string;
+    name: string;
+    createdAt: string;
+    title: string;
+    matchType: 'Solo' | 'Duo' | 'Squad';
+    category: string;
+    map: string;
+    entryFee: number;
+    prizePool: number;
+    perKill: number;
+    totalSlots: number;
+    prizeDetails: string;
+}
+
+const TEMPLATES_STORAGE_KEY = '@match_templates';
+
+// Template API (Local Storage)
+export const templateApi = {
+    getAll: async (): Promise<MatchTemplate[]> => {
+        try {
+            const data = await AsyncStorage.getItem(TEMPLATES_STORAGE_KEY);
+            return data ? JSON.parse(data) : [];
+        } catch (error) {
+            console.error('Failed to get templates:', error);
+            return [];
+        }
+    },
+
+    create: async (template: Omit<MatchTemplate, 'id' | 'createdAt'>): Promise<MatchTemplate> => {
+        const templates = await templateApi.getAll();
+        const newTemplate: MatchTemplate = {
+            ...template,
+            id: `template_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            createdAt: new Date().toISOString(),
+        };
+        templates.push(newTemplate);
+        await AsyncStorage.setItem(TEMPLATES_STORAGE_KEY, JSON.stringify(templates));
+        return newTemplate;
+    },
+
+    update: async (id: string, updates: Partial<MatchTemplate>): Promise<MatchTemplate | null> => {
+        const templates = await templateApi.getAll();
+        const index = templates.findIndex(t => t.id === id);
+        if (index === -1) return null;
+
+        templates[index] = { ...templates[index], ...updates };
+        await AsyncStorage.setItem(TEMPLATES_STORAGE_KEY, JSON.stringify(templates));
+        return templates[index];
+    },
+
+    delete: async (id: string): Promise<boolean> => {
+        const templates = await templateApi.getAll();
+        const filtered = templates.filter(t => t.id !== id);
+        await AsyncStorage.setItem(TEMPLATES_STORAGE_KEY, JSON.stringify(filtered));
+        return true;
+    },
+};
 
 // Main API (Account, etc.)
 const BASE_URL = process.env.EXPO_PUBLIC_API || 'https://my-gamezoneapp.jibonhossen-dev.workers.dev';

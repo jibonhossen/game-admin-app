@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, StyleSheet, ScrollView, TouchableOpacity, Platform, ActivityIndicator, KeyboardAvoidingView } from 'react-native';
-import { useRouter, Stack } from 'expo-router';
+import React, { useEffect, useState, useCallback } from 'react';
+import { View, Text, TextInput, StyleSheet, ScrollView, TouchableOpacity, Platform, ActivityIndicator, KeyboardAvoidingView, Modal } from 'react-native';
+import { useRouter, Stack, useFocusEffect } from 'expo-router';
 import { COLORS, SPACING, FONTS } from '../../src/constants/theme';
-import { matchApi } from '../../src/services/api';
+import { matchApi, templateApi, MatchTemplate } from '../../src/services/api';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,6 +17,13 @@ export default function CreateMatch() {
     const [config, setConfig] = useState<any>(null);
     const [showDatePicker, setShowDatePicker] = useState(false);
     const [showTimePicker, setShowTimePicker] = useState(false);
+
+    // Template states
+    const [templates, setTemplates] = useState<MatchTemplate[]>([]);
+    const [selectedTemplate, setSelectedTemplate] = useState<MatchTemplate | null>(null);
+    const [showSaveModal, setShowSaveModal] = useState(false);
+    const [templateName, setTemplateName] = useState('');
+    const [savingTemplate, setSavingTemplate] = useState(false);
 
     const [date, setDate] = useState(new Date());
     const [formData, setFormData] = useState({
@@ -33,16 +40,75 @@ export default function CreateMatch() {
         prizeDetails: '',
     });
 
-    useEffect(() => {
-        fetchConfig();
-    }, []);
-
-    const fetchConfig = async () => {
+    const fetchData = async () => {
         try {
-            const data = await matchApi.getMatchConfig();
-            setConfig(data);
+            const [configData, templatesData] = await Promise.all([
+                matchApi.getMatchConfig(),
+                templateApi.getAll()
+            ]);
+            setConfig(configData);
+            setTemplates(templatesData);
         } catch (error) {
             console.error('Failed to fetch config', error);
+        }
+    };
+
+    useFocusEffect(
+        useCallback(() => {
+            fetchData();
+        }, [])
+    );
+
+    const handleSelectTemplate = (template: MatchTemplate) => {
+        setSelectedTemplate(template);
+        setFormData({
+            title: template.title,
+            matchType: template.matchType,
+            category: template.category,
+            map: template.map,
+            entryFee: template.entryFee.toString(),
+            prizePool: template.prizePool.toString(),
+            perKill: template.perKill.toString(),
+            totalSlots: template.totalSlots.toString(),
+            customId: '',
+            password: '',
+            prizeDetails: template.prizeDetails,
+        });
+        showAlert({ title: 'Template Applied', message: `"${template.name}" loaded. Set the date & time to create the match.`, type: 'success' });
+    };
+
+    const handleSaveTemplate = async () => {
+        if (!templateName.trim()) {
+            showAlert({ title: 'Required', message: 'Please enter a template name', type: 'warning' });
+            return;
+        }
+        if (!formData.title || !formData.entryFee || !formData.totalSlots) {
+            showAlert({ title: 'Required', message: 'Please fill in Title, Entry Fee, and Total Slots before saving template.', type: 'warning' });
+            return;
+        }
+
+        try {
+            setSavingTemplate(true);
+            await templateApi.create({
+                name: templateName.trim(),
+                title: formData.title,
+                matchType: formData.matchType as 'Solo' | 'Duo' | 'Squad',
+                category: formData.category,
+                map: formData.map,
+                entryFee: Number(formData.entryFee),
+                prizePool: Number(formData.prizePool) || 0,
+                perKill: Number(formData.perKill) || 0,
+                totalSlots: Number(formData.totalSlots),
+                prizeDetails: formData.prizeDetails,
+            });
+            setShowSaveModal(false);
+            setTemplateName('');
+            await fetchData();
+            showAlert({ title: 'Success', message: 'Template saved successfully!', type: 'success' });
+        } catch (error) {
+            showAlert({ title: 'Error', message: 'Failed to save template', type: 'error' });
+        } finally {
+            setSavingTemplate(false);
         }
     };
 
@@ -149,10 +215,92 @@ export default function CreateMatch() {
                 contentContainerStyle={[styles.content, { paddingBottom: 100 }]}
                 showsVerticalScrollIndicator={false}
             >
+                {/* Template Save Modal */}
+                <Modal
+                    visible={showSaveModal}
+                    transparent
+                    animationType="fade"
+                    onRequestClose={() => setShowSaveModal(false)}
+                >
+                    <View style={styles.modalOverlay}>
+                        <View style={styles.modalContent}>
+                            <View style={styles.modalHeader}>
+                                <Ionicons name="bookmark" size={24} color={COLORS.primary} />
+                                <Text style={styles.modalTitle}>Save as Template</Text>
+                            </View>
+                            <Text style={styles.modalSubtitle}>Enter a name for this template</Text>
+                            <View style={styles.modalInputWrapper}>
+                                <TextInput
+                                    style={styles.modalInput}
+                                    value={templateName}
+                                    onChangeText={setTemplateName}
+                                    placeholder="e.g. Solo BR 10TK"
+                                    placeholderTextColor={COLORS.textSecondary}
+                                    autoFocus
+                                />
+                            </View>
+                            <View style={styles.modalButtons}>
+                                <TouchableOpacity
+                                    style={styles.modalCancelBtn}
+                                    onPress={() => { setShowSaveModal(false); setTemplateName(''); }}
+                                >
+                                    <Text style={styles.modalCancelText}>Cancel</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={styles.modalSaveBtn}
+                                    onPress={handleSaveTemplate}
+                                    disabled={savingTemplate}
+                                >
+                                    {savingTemplate ? (
+                                        <ActivityIndicator color={COLORS.white} size="small" />
+                                    ) : (
+                                        <Text style={styles.modalSaveText}>Save Template</Text>
+                                    )}
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                    </View>
+                </Modal>
+
                 <View style={styles.headerInfo}>
                     <Text style={styles.headerTitle}>New Match</Text>
                     <Text style={styles.headerSub}>Setup a new tournament session</Text>
                 </View>
+
+                {/* Template Selector */}
+                {templates.length > 0 && (
+                    <View style={styles.templateSection}>
+                        <View style={styles.templateHeader}>
+                            <Ionicons name="flash" size={16} color={COLORS.primary} />
+                            <Text style={styles.templateLabel}>Quick Start from Template</Text>
+                        </View>
+                        <ScrollView
+                            horizontal
+                            showsHorizontalScrollIndicator={false}
+                            contentContainerStyle={styles.templateScroll}
+                        >
+                            {templates.map((template) => (
+                                <TouchableOpacity
+                                    key={template.id}
+                                    style={[
+                                        styles.templateChip,
+                                        selectedTemplate?.id === template.id && styles.templateChipActive
+                                    ]}
+                                    onPress={() => handleSelectTemplate(template)}
+                                >
+                                    <Text style={[
+                                        styles.templateChipText,
+                                        selectedTemplate?.id === template.id && styles.templateChipTextActive
+                                    ]}>{template.name}</Text>
+                                    <Text style={[
+                                        styles.templateChipSub,
+                                        selectedTemplate?.id === template.id && styles.templateChipSubActive
+                                    ]}>৳{template.entryFee}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </ScrollView>
+                    </View>
+                )}
 
                 {/* Basic Details */}
                 <View style={styles.card}>
@@ -173,6 +321,63 @@ export default function CreateMatch() {
                 {/* Scheduling */}
                 <View style={styles.card}>
                     <Text style={styles.cardHeader}>SCHEDULE & TIME</Text>
+
+                    {/* Quick Time Presets */}
+                    <View style={styles.quickTimeSection}>
+                        <View style={styles.quickTimeHeader}>
+                            <Ionicons name="flash" size={14} color={COLORS.primary} />
+                            <Text style={styles.quickTimeLabel}>Quick Time</Text>
+                        </View>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickTimeScroll}>
+                            {[20, 21, 22, 23].map((hour) => {
+                                const isSelected = date.getHours() === hour && date.getMinutes() === 0;
+                                return (
+                                    <TouchableOpacity
+                                        key={hour}
+                                        style={[styles.quickTimeChip, isSelected && styles.quickTimeChipActive]}
+                                        onPress={() => {
+                                            const newDate = new Date();
+                                            newDate.setHours(hour, 0, 0, 0);
+                                            if (newDate < new Date()) {
+                                                newDate.setDate(newDate.getDate() + 1);
+                                            }
+                                            setDate(newDate);
+                                        }}
+                                    >
+                                        <Text style={[styles.quickTimeText, isSelected && styles.quickTimeTextActive]}>
+                                            {hour > 12 ? hour - 12 : hour} PM
+                                        </Text>
+                                    </TouchableOpacity>
+                                );
+                            })}
+                        </ScrollView>
+                    </View>
+
+                    {/* Relative Time Buttons */}
+                    <View style={styles.quickTimeSection}>
+                        <View style={styles.quickTimeHeader}>
+                            <Ionicons name="timer-outline" size={14} color={COLORS.textSecondary} />
+                            <Text style={styles.quickTimeLabelSub}>From Now</Text>
+                        </View>
+                        <View style={styles.relativeTimeRow}>
+                            {[1, 2, 3, 4].map((hours) => (
+                                <TouchableOpacity
+                                    key={hours}
+                                    style={styles.relativeTimeBtn}
+                                    onPress={() => {
+                                        const newDate = new Date();
+                                        newDate.setHours(newDate.getHours() + hours);
+                                        newDate.setMinutes(0, 0, 0);
+                                        setDate(newDate);
+                                    }}
+                                >
+                                    <Text style={styles.relativeTimeText}>+{hours}H</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    </View>
+
+                    {/* Manual Date/Time Pickers */}
                     <View style={styles.row}>
                         <TouchableOpacity style={styles.pickerBtn} onPress={() => setShowDatePicker(true)}>
                             <View style={styles.pickerIcon}>
@@ -256,6 +461,18 @@ export default function CreateMatch() {
                         multiline={true}
                         numberOfLines={4}
                     />
+                </View>
+
+                {/* Action Buttons */}
+                <View style={styles.actionRow}>
+                    <TouchableOpacity
+                        onPress={() => setShowSaveModal(true)}
+                        activeOpacity={0.8}
+                        style={styles.saveTemplateBtn}
+                    >
+                        <Ionicons name="bookmark-outline" size={20} color={COLORS.primary} />
+                        <Text style={styles.saveTemplateText}>Save Template</Text>
+                    </TouchableOpacity>
                 </View>
 
                 <TouchableOpacity
@@ -482,5 +699,214 @@ const styles = StyleSheet.create({
         color: COLORS.white,
         fontFamily: 'Poppins_700Bold',
         fontSize: 16,
+    },
+    // Template Selector Styles
+    templateSection: {
+        marginBottom: 20,
+    },
+    templateHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        marginBottom: 12,
+    },
+    templateLabel: {
+        fontSize: 13,
+        fontFamily: 'Poppins_600SemiBold',
+        color: COLORS.text,
+    },
+    templateScroll: {
+        gap: 10,
+    },
+    templateChip: {
+        backgroundColor: COLORS.white,
+        borderRadius: 14,
+        paddingVertical: 12,
+        paddingHorizontal: 16,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        alignItems: 'center',
+        minWidth: 100,
+    },
+    templateChipActive: {
+        backgroundColor: COLORS.primary,
+        borderColor: COLORS.primary,
+    },
+    templateChipText: {
+        fontSize: 13,
+        fontFamily: 'Poppins_700Bold',
+        color: COLORS.text,
+    },
+    templateChipTextActive: {
+        color: COLORS.white,
+    },
+    templateChipSub: {
+        fontSize: 11,
+        fontFamily: 'Poppins_500Medium',
+        color: COLORS.textSecondary,
+        marginTop: 2,
+    },
+    templateChipSubActive: {
+        color: COLORS.white + 'CC',
+    },
+    // Action Row Styles
+    actionRow: {
+        marginBottom: 12,
+    },
+    saveTemplateBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        backgroundColor: COLORS.white,
+        borderRadius: 14,
+        paddingVertical: 14,
+        borderWidth: 1,
+        borderColor: COLORS.primary,
+    },
+    saveTemplateText: {
+        fontSize: 14,
+        fontFamily: 'Poppins_600SemiBold',
+        color: COLORS.primary,
+    },
+    // Modal Styles
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 20,
+    },
+    modalContent: {
+        backgroundColor: COLORS.white,
+        borderRadius: 24,
+        padding: 24,
+        width: '100%',
+        maxWidth: 400,
+    },
+    modalHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        marginBottom: 8,
+    },
+    modalTitle: {
+        fontSize: 20,
+        fontFamily: 'Poppins_700Bold',
+        color: COLORS.text,
+    },
+    modalSubtitle: {
+        fontSize: 14,
+        fontFamily: 'Poppins_400Regular',
+        color: COLORS.textSecondary,
+        marginBottom: 20,
+    },
+    modalInputWrapper: {
+        backgroundColor: COLORS.background,
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        paddingHorizontal: 16,
+        height: 54,
+        justifyContent: 'center',
+        marginBottom: 20,
+    },
+    modalInput: {
+        color: COLORS.text,
+        fontFamily: 'Poppins_500Medium',
+        fontSize: 15,
+    },
+    modalButtons: {
+        flexDirection: 'row',
+        gap: 12,
+    },
+    modalCancelBtn: {
+        flex: 1,
+        height: 50,
+        borderRadius: 14,
+        backgroundColor: COLORS.background,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: COLORS.border,
+    },
+    modalCancelText: {
+        fontSize: 14,
+        fontFamily: 'Poppins_600SemiBold',
+        color: COLORS.textSecondary,
+    },
+    modalSaveBtn: {
+        flex: 2,
+        height: 50,
+        borderRadius: 14,
+        backgroundColor: COLORS.primary,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    modalSaveText: {
+        fontSize: 14,
+        fontFamily: 'Poppins_700Bold',
+        color: COLORS.white,
+    },
+    // Quick Time Selector Styles
+    quickTimeSection: {
+        marginBottom: 16,
+    },
+    quickTimeHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        marginBottom: 10,
+    },
+    quickTimeLabel: {
+        fontSize: 12,
+        fontFamily: 'Poppins_600SemiBold',
+        color: COLORS.primary,
+    },
+    quickTimeLabelSub: {
+        fontSize: 12,
+        fontFamily: 'Poppins_500Medium',
+        color: COLORS.textSecondary,
+    },
+    quickTimeScroll: {
+        gap: 8,
+    },
+    quickTimeChip: {
+        paddingVertical: 10,
+        paddingHorizontal: 18,
+        borderRadius: 12,
+        backgroundColor: COLORS.background,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+    },
+    quickTimeChipActive: {
+        backgroundColor: COLORS.primary,
+        borderColor: COLORS.primary,
+    },
+    quickTimeText: {
+        fontSize: 14,
+        fontFamily: 'Poppins_700Bold',
+        color: COLORS.text,
+    },
+    quickTimeTextActive: {
+        color: COLORS.white,
+    },
+    relativeTimeRow: {
+        flexDirection: 'row',
+        gap: 10,
+    },
+    relativeTimeBtn: {
+        flex: 1,
+        paddingVertical: 12,
+        borderRadius: 12,
+        backgroundColor: COLORS.background,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        alignItems: 'center',
+    },
+    relativeTimeText: {
+        fontSize: 14,
+        fontFamily: 'Poppins_700Bold',
+        color: COLORS.textSecondary,
     },
 });
