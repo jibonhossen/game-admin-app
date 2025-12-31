@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, FlatList, TextInput, StyleSheet, TouchableOpacity, ActivityIndicator, StatusBar, KeyboardAvoidingView, Platform, Dimensions } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { COLORS, SPACING, FONTS } from '../../src/constants/theme';
-import { matchApi } from '../../src/services/api';
+import { matchApi, notificationApi } from '../../src/services/api';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -48,6 +48,28 @@ export default function DistributePrizes() {
 
     const totalPrize = Object.values(amounts).reduce((acc, curr) => acc + (Number(curr) || 0), 0);
 
+    const sendPrizeNotifications = async (winners: { uid: string; amount: number }[]) => {
+        try {
+            // Send individual notifications to each winner
+            for (const winner of winners) {
+                const winnerData = participants.find(p => p.uid === winner.uid);
+                const winnerName = winnerData?.username || 'Player';
+
+                await notificationApi.sendNotification({
+                    title: '🎉 Congratulations! You Won!',
+                    body: `Hey ${winnerName}! You've won ৳${winner.amount} as prize money! 🏆 The amount has been added to your wallet.`,
+                    data: { screen: 'wallet', amount: winner.amount },
+                    targetType: 'specific',
+                    userIds: [winner.uid],
+                    skipSave: true,
+                });
+            }
+        } catch (error) {
+            console.error('Failed to send prize notifications:', error);
+            // Don't fail the whole operation if notifications fail
+        }
+    };
+
     const handleDistribute = async () => {
         const winners = getWinners();
 
@@ -64,9 +86,13 @@ export default function DistributePrizes() {
                 try {
                     setDistributing(true);
                     await matchApi.distributePrizes({ matchId: id as string, winners });
+
+                    // Send push notifications to winners
+                    await sendPrizeNotifications(winners);
+
                     showAlert({
                         title: 'Success',
-                        message: 'Prizes distributed successfully!',
+                        message: 'Prizes distributed successfully! Winners have been notified.',
                         type: 'success',
                         onConfirm: () => router.back()
                     });
