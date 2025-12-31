@@ -188,6 +188,14 @@ export const authApi = {
         const response = await api.get('/api/auth/admin/subadmins');
         return response.data;
     },
+    updateSubAdmin: async (id: string, data: { name?: string; allowedCategories?: string[] }) => {
+        const response = await api.put(`/api/auth/admin/subadmin/${id}`, data);
+        return response.data;
+    },
+    deleteSubAdmin: async (id: string) => {
+        const response = await api.delete(`/api/auth/admin/subadmin/${id}`);
+        return response.data;
+    },
 };
 
 export const userApi = {
