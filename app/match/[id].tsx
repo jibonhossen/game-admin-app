@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, ScrollView, TextInput, StyleSheet, TouchableOpacity, ActivityIndicator, StatusBar, Modal, Dimensions } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { COLORS, SPACING, FONTS } from '../../src/constants/theme';
 import { matchApi, notificationApi } from '../../src/services/api';
 import { Ionicons } from '@expo/vector-icons';
@@ -29,9 +29,15 @@ export default function MatchDetails() {
     const [showNotificationModal, setShowNotificationModal] = useState(false);
     const [notificationMessage, setNotificationMessage] = useState('');
 
-    useEffect(() => {
-        fetchData();
-    }, [id]);
+    const isLive = match?.adminStatus === 'active' && match?.status !== 'Completed';
+    const isCompleted = match?.status === 'Completed';
+    const isClosed = match?.adminStatus === 'closed';
+
+    useFocusEffect(
+        useCallback(() => {
+            fetchData();
+        }, [id])
+    );
 
     const fetchData = async () => {
         try {
@@ -150,6 +156,28 @@ export default function MatchDetails() {
                     setMatch(result.match);
                 } catch (error: any) {
                     showAlert({ title: 'Error', message: error.response?.data?.error || 'Failed to change status', type: 'error' });
+                } finally {
+                    setChangingStatus(false);
+                }
+            }
+        });
+    };
+
+    const handleComplete = async () => {
+        showAlert({
+            title: 'Complete Match',
+            message: 'Are you sure you want to mark this match as Completed? This will enable prize distribution.',
+            type: 'confirm',
+            onConfirm: async () => {
+                try {
+                    setChangingStatus(true);
+                    // Use changeMatchStatus (we added this to api.ts)
+                    const result = await matchApi.changeMatchStatus(id as string, 'Completed');
+                    showAlert({ title: 'Success', message: 'Match marked as Completed', type: 'success' });
+                    // Refresh data
+                    fetchData();
+                } catch (error: any) {
+                    showAlert({ title: 'Error', message: error.response?.data?.error || 'Failed to complete match', type: 'error' });
                 } finally {
                     setChangingStatus(false);
                 }
@@ -372,27 +400,121 @@ export default function MatchDetails() {
                     </View>
                 </View>
 
-                {/* Quick Actions */}
-                <View style={[styles.card, styles.actionsRow]}>
+                {/* Match Flow */}
+                <View style={[styles.card, { overflow: 'hidden' }]}>
+                    <View style={styles.cardHeader}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            <Ionicons name="git-network-outline" size={18} color={COLORS.primary} />
+                            <Text style={styles.cardTitle}>MATCH FLOW</Text>
+                        </View>
+                    </View>
+
+                    {/* Progress Steps */}
+                    <View style={styles.flowContainer}>
+                        <FlowStep step={1} label="Setup" icon="settings-outline" isCompleted={true} isActive={!isLive && !isCompleted && !isClosed} />
+                        <View style={[styles.flowLine, (isLive || isCompleted || isClosed) && styles.flowLineActive]} />
+                        <FlowStep step={2} label="Live" icon="play-outline" isCompleted={isCompleted || isClosed} isActive={isLive} />
+                        <View style={[styles.flowLine, (isCompleted || isClosed) && styles.flowLineActive]} />
+                        <FlowStep step={3} label="Completed" icon="trophy-outline" isCompleted={isClosed || (isCompleted && match?.prizesDistributed)} isActive={isCompleted && !match?.prizesDistributed} />
+                        <View style={[styles.flowLine, isClosed && styles.flowLineActive]} />
+                        <FlowStep step={4} label="Closed" icon="lock-closed-outline" isCompleted={isClosed} isActive={isClosed} />
+                    </View>
+
+                    {/* Action Area */}
+                    <View style={styles.currentActionContainer}>
+                        {/* Case 1: Active -> Show Complete Button */}
+                        {isLive && (
+                            <TouchableOpacity
+                                style={[styles.flowActionBtn, { backgroundColor: COLORS.success }]}
+                                onPress={handleComplete}
+                                disabled={changingStatus}
+                            >
+                                {changingStatus ? (
+                                    <ActivityIndicator color={COLORS.white} />
+                                ) : (
+                                    <>
+                                        <Ionicons name="checkmark-circle" size={20} color={COLORS.white} />
+                                        <Text style={styles.flowActionText}>Complete Match</Text>
+                                    </>
+                                )}
+                            </TouchableOpacity>
+                        )}
+
+                        {/* Case 2: Completed -> Show Distribute or Close */}
+                        {isCompleted && !isClosed && (
+                            <View style={styles.completedActionsColumn}>
+                                {!match?.prizesDistributed ? (
+                                    <>
+                                        <TouchableOpacity
+                                            style={[styles.flowActionBtn, { backgroundColor: COLORS.secondary }]}
+                                            onPress={() => router.push(`/distribute/${id}`)}
+                                        >
+                                            <Ionicons name="gift" size={20} color={COLORS.white} />
+                                            <Text style={styles.flowActionText}>Distribute Prizes</Text>
+                                        </TouchableOpacity>
+                                        <View style={styles.flowNote}>
+                                            <Ionicons name="information-circle-outline" size={16} color={COLORS.textSecondary} />
+                                            <Text style={styles.flowNoteText}>
+                                                Close match option will appear after you distribute prizes
+                                            </Text>
+                                        </View>
+                                    </>
+                                ) : (
+                                    <TouchableOpacity
+                                        style={[styles.flowActionBtn, { backgroundColor: COLORS.error }]}
+                                        onPress={() => handleStatusChange('closed')}
+                                        disabled={changingStatus}
+                                    >
+                                        {changingStatus ? (
+                                            <ActivityIndicator color={COLORS.white} />
+                                        ) : (
+                                            <>
+                                                <Ionicons name="lock-closed" size={20} color={COLORS.white} />
+                                                <Text style={styles.flowActionText}>Close Match</Text>
+                                            </>
+                                        )}
+                                    </TouchableOpacity>
+                                )}
+                            </View>
+                        )}
+
+                        {/* Case 3: Closed */}
+                        {isClosed && (
+                            <View style={styles.closedBanner}>
+                                <Ionicons name="lock-closed" size={20} color={COLORS.success} />
+                                <Text style={styles.closedText}>This match is closed</Text>
+                            </View>
+                        )}
+
+                        {/* Case 4: Inactive -> Start/Open */}
+                        {!isLive && !isCompleted && !isClosed && (
+                            <TouchableOpacity
+                                style={[styles.flowActionBtn, { backgroundColor: COLORS.primary }]}
+                                onPress={() => handleStatusChange('active')}
+                                disabled={changingStatus}
+                            >
+                                <Ionicons name="play" size={20} color={COLORS.white} />
+                                <Text style={styles.flowActionText}>Start Match (Go Live)</Text>
+                            </TouchableOpacity>
+                        )}
+
+                        {/* Helper: Push Alert is separate now? */}
+                        {/* I removed Push Alert button from Quick Actions. It is useful. I should add a small button for it or keep it accessible. */}
+                        {/* Sub-admin put it in 'Action Grid' above participants or top. */}
+                        {/* I should check where I can put 'Push Alert'. */}
+                        {/* Maybe below Match Flow or integrated? */}
+                        {/* I'll add "Push Alert" as a separate small button or tile below Match Flow. */}
+                    </View>
+                </View>
+
+                {/* Extra Actions Row (Push Alert) */}
+                <View style={{ paddingHorizontal: 20, marginBottom: 20 }}>
                     <ActionButton
                         icon="notifications"
-                        label="PUSH ALERT"
+                        label="SEND PUSH ALERT"
                         onPress={handleSendNotification}
                         color="#4F46E5"
                         loading={sendingNotification}
-                    />
-                    <ActionButton
-                        icon="gift"
-                        label="DISTRIBUTE"
-                        onPress={() => router.push(`/distribute/${id}`)}
-                        color={COLORS.secondary}
-                    />
-                    <ActionButton
-                        icon={match.adminStatus === 'closed' ? 'refresh' : 'power'}
-                        label={match.adminStatus === 'closed' ? 'REOPEN' : 'CLOSE'}
-                        onPress={() => handleStatusChange(match.adminStatus === 'closed' ? 'active' : 'closed')}
-                        color={match.adminStatus === 'closed' ? COLORS.success : COLORS.error}
-                        loading={changingStatus}
                     />
                 </View>
 
@@ -455,6 +577,27 @@ const StatusIndicator = ({ status }: { status: string }) => {
         </View>
     );
 };
+
+const FlowStep = ({ step, label, icon, isCompleted, isActive }: { step: number, label: string, icon: string, isCompleted: boolean, isActive: boolean }) => (
+    <View style={styles.flowStep}>
+        <View style={[
+            styles.flowStepCircle,
+            isCompleted && styles.flowStepCompleted,
+            isActive && styles.flowStepActive
+        ]}>
+            {isCompleted ? (
+                <Ionicons name="checkmark" size={16} color={COLORS.white} />
+            ) : (
+                <Ionicons name={icon as any} size={16} color={isActive ? COLORS.white : COLORS.textSecondary} />
+            )}
+        </View>
+        <Text style={[
+            styles.flowStepLabel,
+            isCompleted && styles.flowStepLabelCompleted,
+            isActive && styles.flowStepLabelActive
+        ]}>{label}</Text>
+    </View>
+);
 
 const ParticipantCard = ({ data, index }: any) => (
     <View style={styles.pCard}>
@@ -848,5 +991,101 @@ const styles = StyleSheet.create({
     backButtonText: {
         color: COLORS.white,
         fontFamily: 'Poppins_700Bold',
+    },
+    // Flow Styles
+    flowContainer: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        justifyContent: 'space-between',
+        marginBottom: 20,
+    },
+    flowStep: {
+        alignItems: 'center',
+        flex: 1,
+    },
+    flowStepCircle: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: COLORS.border,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 6,
+    },
+    flowStepCompleted: {
+        backgroundColor: COLORS.success,
+    },
+    flowStepActive: {
+        backgroundColor: COLORS.primary,
+    },
+    flowStepLabel: {
+        fontSize: 10,
+        fontFamily: 'Poppins_500Medium',
+        color: COLORS.textSecondary,
+        textAlign: 'center',
+    },
+    flowStepLabelCompleted: {
+        color: COLORS.success,
+        fontFamily: 'Poppins_700Bold',
+    },
+    flowStepLabelActive: {
+        color: COLORS.primary,
+        fontFamily: 'Poppins_700Bold',
+    },
+    flowLine: {
+        height: 2,
+        flex: 1,
+        backgroundColor: COLORS.border,
+        marginTop: 17,
+        marginHorizontal: -8,
+    },
+    flowLineActive: {
+        backgroundColor: COLORS.success,
+    },
+    currentActionContainer: {
+        marginTop: 4,
+    },
+    flowActionBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        padding: 14,
+        borderRadius: 14,
+    },
+    flowActionText: {
+        fontSize: 14,
+        fontFamily: 'Poppins_700Bold',
+        color: COLORS.white,
+    },
+    completedActionsColumn: {
+        gap: 12,
+    },
+    flowNote: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+        paddingHorizontal: 12,
+    },
+    flowNoteText: {
+        fontSize: 12,
+        fontFamily: 'Poppins_500Medium',
+        color: COLORS.textSecondary,
+        textAlign: 'center',
+    },
+    closedBanner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: COLORS.success + '15',
+        padding: 16,
+        borderRadius: 14,
+        gap: 10,
+    },
+    closedText: {
+        fontSize: 14,
+        fontFamily: 'Poppins_700Bold',
+        color: COLORS.success,
     },
 });

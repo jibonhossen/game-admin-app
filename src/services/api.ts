@@ -123,6 +123,14 @@ export const matchApi = {
         const response = await matchAxios.put(`/match/admin/status/${id}`, { adminStatus });
         return response.data;
     },
+    changeMatchStatus: async (id: string, status: 'Open' | 'Full' | 'Closed' | 'Completed') => {
+        if (status === 'Completed') {
+            const response = await matchAxios.put(`/match/admin/complete/${id}`);
+            return response.data;
+        }
+        const response = await matchAxios.put(`/match/status/${id}`, { status });
+        return response.data;
+    },
     deleteMatch: async (id: string) => {
         const response = await matchAxios.delete(`/match/admin/delete/${id}`);
         return response.data;
