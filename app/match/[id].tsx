@@ -386,18 +386,65 @@ export default function MatchDetails() {
                             <Text style={styles.autoPopText}>Auto 3 Rows</Text>
                         </TouchableOpacity>
                     </View>
-                    <View style={styles.inputGroup}>
-                        <Text style={styles.label}>Prize Details</Text>
-                        <TextInput
-                            style={[styles.input, { height: 100, textAlignVertical: 'top' }]}
-                            value={prizeDetails}
-                            onChangeText={setPrizeDetails}
-                            placeholder="e.g. 1st: 500, 2nd: 250, 3rd: 100"
-                            placeholderTextColor={COLORS.textSecondary}
-                            multiline={true}
-                            numberOfLines={4}
-                        />
-                    </View>
+
+                    {/* Render Rule Preview if JSON */}
+                    {(() => {
+                        try {
+                            const parsed = JSON.parse(prizeDetails);
+                            if (parsed && parsed.name && parsed.type) {
+                                return (
+                                    <View style={styles.rulePreview}>
+                                        <View style={styles.ruleHeader}>
+                                            <View style={styles.ruleIcon}>
+                                                <Ionicons name="ribbon" size={24} color={COLORS.white} />
+                                            </View>
+                                            <View style={{ flex: 1 }}>
+                                                <Text style={styles.ruleName}>{parsed.name}</Text>
+                                                <Text style={styles.ruleType}>{parsed.type.replace('_', ' ').toUpperCase()}</Text>
+                                            </View>
+                                            <TouchableOpacity
+                                                onPress={() => setPrizeDetails('')}
+                                                style={styles.changeRuleBtn}
+                                            >
+                                                <Ionicons name="create-outline" size={16} color={COLORS.textSecondary} />
+                                            </TouchableOpacity>
+                                        </View>
+
+                                        <View style={styles.ruleConfig}>
+                                            {parsed.type === 'rank_kill' ? (
+                                                <Text style={styles.ruleConfigText}>
+                                                    Per Kill: <Text style={{ fontWeight: 'bold' }}>৳{parsed.config?.per_kill}</Text> •
+                                                    Rank Rewards: <Text style={{ fontWeight: 'bold' }}>{Object.keys(parsed.config?.rank_rewards || {}).length} Places</Text>
+                                                </Text>
+                                            ) : parsed.type === 'equal_share' ? (
+                                                <Text style={styles.ruleConfigText}>
+                                                    Equal Share Pool: <Text style={{ fontWeight: 'bold' }}>৳{parsed.config?.total_pool}</Text>
+                                                </Text>
+                                            ) : (
+                                                <Text style={styles.ruleConfigText}>Custom Configuration</Text>
+                                            )}
+                                        </View>
+                                    </View>
+                                );
+                            }
+                        } catch (e) {
+                            // Not JSON
+                        }
+                        return (
+                            <View style={styles.inputGroup}>
+                                <Text style={styles.label}>Prize Details (Text or JSON)</Text>
+                                <TextInput
+                                    style={[styles.input, { height: 100, textAlignVertical: 'top' }]}
+                                    value={prizeDetails}
+                                    onChangeText={setPrizeDetails}
+                                    placeholder="e.g. 1st: 500, 2nd: 250, 3rd: 100"
+                                    placeholderTextColor={COLORS.textSecondary}
+                                    multiline={true}
+                                    numberOfLines={4}
+                                />
+                            </View>
+                        );
+                    })()}
                 </View>
 
                 {/* Match Flow */}
@@ -1043,7 +1090,53 @@ const styles = StyleSheet.create({
         backgroundColor: COLORS.success,
     },
     currentActionContainer: {
-        marginTop: 4,
+        marginTop: 20,
+    },
+    // Rule Preview Styles
+    rulePreview: {
+        backgroundColor: COLORS.primary + '10',
+        borderRadius: 16,
+        padding: 16,
+        borderWidth: 1,
+        borderColor: COLORS.primary + '30',
+    },
+    ruleHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        marginBottom: 12,
+    },
+    ruleIcon: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: COLORS.primary,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    ruleName: {
+        fontSize: 16,
+        fontFamily: FONTS.bold,
+        color: COLORS.text,
+    },
+    ruleType: {
+        fontSize: 12,
+        fontFamily: FONTS.medium,
+        color: COLORS.primary,
+    },
+    changeRuleBtn: {
+        padding: 8,
+    },
+    ruleConfig: {
+        backgroundColor: COLORS.white,
+        padding: 12,
+        borderRadius: 12,
+    },
+    ruleConfigText: {
+        fontSize: 13,
+        fontFamily: FONTS.medium,
+        color: COLORS.text,
+        lineHeight: 20,
     },
     flowActionBtn: {
         flexDirection: 'row',

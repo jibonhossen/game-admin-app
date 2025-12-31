@@ -2,7 +2,8 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, TextInput, StyleSheet, ScrollView, TouchableOpacity, Platform, ActivityIndicator, KeyboardAvoidingView, Modal } from 'react-native';
 import { useRouter, Stack, useFocusEffect } from 'expo-router';
 import { COLORS, SPACING, FONTS } from '../../src/constants/theme';
-import { matchApi, templateApi, MatchTemplate } from '../../src/services/api';
+import { matchApi, templateApi, MatchTemplate, historyApi } from '../../src/services/api';
+import { PrizeRule } from '../../src/types/prize';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -25,6 +26,10 @@ export default function CreateMatch() {
     const [templateName, setTemplateName] = useState('');
     const [savingTemplate, setSavingTemplate] = useState(false);
 
+    // Rule states
+    const [rules, setRules] = useState<PrizeRule[]>([]);
+    const [selectedRule, setSelectedRule] = useState<PrizeRule | null>(null);
+
     const [date, setDate] = useState(new Date());
     const [formData, setFormData] = useState({
         title: '',
@@ -42,12 +47,14 @@ export default function CreateMatch() {
 
     const fetchData = async () => {
         try {
-            const [configData, templatesData] = await Promise.all([
+            const [configData, templatesData, rulesData] = await Promise.all([
                 matchApi.getMatchConfig(),
-                templateApi.getAll()
+                templateApi.getAll(),
+                historyApi.getRules()
             ]);
             setConfig(configData);
             setTemplates(templatesData);
+            setRules(rulesData || []);
         } catch (error) {
             console.error('Failed to fetch config', error);
         }
@@ -449,15 +456,54 @@ export default function CreateMatch() {
                             style={styles.autoPopBtn}
                         >
                             <Ionicons name="flash-outline" size={14} color={COLORS.primary} />
-                            <Text style={styles.autoPopText}>Auto 3 Rows</Text>
+                            <Text style={styles.autoPopText}>Reset Manual</Text>
                         </TouchableOpacity>
                     </View>
+
+                    {/* Manage Link */}
+                    <TouchableOpacity
+                        style={styles.manageLink}
+                        onPress={() => router.push('/rules')}
+                    >
+                        <Ionicons name="settings-outline" size={12} color={COLORS.secondary} />
+                        <Text style={styles.manageLinkText}>Manage Rules</Text>
+                    </TouchableOpacity>
+
+
+                    {/* Rule Selector */}
+                    <View style={{ marginBottom: 16 }}>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                            <TouchableOpacity
+                                style={[styles.chip, !selectedRule && styles.chipActive]}
+                                onPress={() => { setSelectedRule(null); handleChange('prizeDetails', ''); }}
+                            >
+                                <Text style={[styles.chipText, !selectedRule && styles.chipTextActive]}>Manual Text</Text>
+                            </TouchableOpacity>
+                            {rules.map(rule => (
+                                <TouchableOpacity
+                                    key={rule.id}
+                                    style={[styles.chip, selectedRule?.id === rule.id && styles.chipActive]}
+                                    onPress={() => {
+                                        setSelectedRule(rule);
+                                        // Save JSON as string
+                                        handleChange('prizeDetails', JSON.stringify(rule));
+                                    }}
+                                >
+                                    <Text style={[styles.chipText, selectedRule?.id === rule.id && styles.chipTextActive]}>{rule.name}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </ScrollView>
+                    </View>
+
                     <Input
                         icon="trophy-outline"
-                        label="Prize Distribution Details"
+                        label="Prize Config (JSON or Text)"
                         value={formData.prizeDetails}
-                        onChangeText={(t: string) => handleChange('prizeDetails', t)}
-                        placeholder="e.g. 1st: 500, 2nd: 250, 3rd: 100"
+                        onChangeText={(t: string) => {
+                            handleChange('prizeDetails', t);
+                            if (selectedRule) setSelectedRule(null); // Deselect if manually editing
+                        }}
+                        placeholder="Select a rule or type manually..."
                         multiline={true}
                         numberOfLines={4}
                     />
@@ -498,7 +544,7 @@ export default function CreateMatch() {
                     </LinearGradient>
                 </TouchableOpacity>
             </ScrollView>
-        </KeyboardAvoidingView>
+        </KeyboardAvoidingView >
     );
 }
 
@@ -581,8 +627,24 @@ const styles = StyleSheet.create({
     },
     autoPopText: {
         fontSize: 10,
-        fontFamily: 'Poppins_600SemiBold',
+        fontFamily: FONTS.bold,
         color: COLORS.primary,
+    },
+    manageLink: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        marginBottom: 10,
+        alignSelf: 'flex-start',
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        backgroundColor: COLORS.secondary + '10',
+        borderRadius: 6,
+    },
+    manageLinkText: {
+        fontSize: 10,
+        fontFamily: FONTS.medium,
+        color: COLORS.secondary,
     },
     row: {
         flexDirection: 'row',

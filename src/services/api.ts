@@ -217,5 +217,27 @@ export const userApi = {
     },
 };
 
+// Prize History Service (EC2)
+const HISTORY_URL = process.env.EXPO_PUBLIC_PRIZE_API || 'http://localhost:3001'; // Fallback to local
+const historyAxios = axios.create({
+    baseURL: HISTORY_URL,
+    headers: { 'Content-Type': 'application/json' },
+});
+
+export const historyApi = {
+    getRules: async () => {
+        const response = await historyAxios.get('/api/rules');
+        return response.data;
+    },
+    createRule: async (rule: any) => {
+        const response = await historyAxios.post('/api/rules', rule);
+        return response.data;
+    },
+    logMatch: async (log: any) => {
+        const response = await historyAxios.post('/api/history', log);
+        return response.data;
+    },
+};
+
 export default api;
 
