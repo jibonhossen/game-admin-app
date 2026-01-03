@@ -59,6 +59,35 @@ export default function SettingsScreen() {
                 </View>
             </LinearGradient>
 
+            <Text style={styles.sectionTitle}>Data Management</Text>
+            <View style={styles.menuGroup}>
+                <MenuItem
+                    title="Manage Users"
+                    subtitle="View and manage all registered users"
+                    icon="people"
+                    color="#8B5CF6"
+                    onPress={() => router.push('/(tabs)/users')}
+                />
+                <MenuItem
+                    title="Match Templates"
+                    subtitle="Create and manage match templates"
+                    icon="document-text"
+                    color="#F59E0B"
+                    onPress={() => router.push('/(tabs)/templates')}
+                />
+            </View>
+
+            <Text style={styles.sectionTitle}>Prize Settings</Text>
+            <View style={styles.menuGroup}>
+                <MenuItem
+                    title="Prize Rules"
+                    subtitle="Manage prize distribution rules"
+                    icon="ribbon"
+                    color="#10B981"
+                    onPress={() => router.push('/rules')}
+                />
+            </View>
+
             <Text style={styles.sectionTitle}>Match Controls</Text>
             <View style={styles.menuGroup}>
                 <MenuItem

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, ScrollView, TextInput, StyleSheet, TouchableOpacity, ActivityIndicator, StatusBar, Modal, Dimensions } from 'react-native';
+import { View, Text, ScrollView, TextInput, StyleSheet, TouchableOpacity, ActivityIndicator, StatusBar, Modal, Dimensions, RefreshControl } from 'react-native';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { COLORS, SPACING, FONTS } from '../../src/constants/theme';
 import { matchApi, notificationApi } from '../../src/services/api';
@@ -18,6 +18,7 @@ export default function MatchDetails() {
     const [match, setMatch] = useState<any>(null);
     const [participants, setParticipants] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
 
     // Update Form State
     const [customId, setCustomId] = useState('');
@@ -298,7 +299,22 @@ export default function MatchDetails() {
         <View style={styles.container}>
             <StatusBar barStyle="dark-content" />
 
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
+            <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ paddingBottom: 100 }}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={async () => {
+                            setRefreshing(true);
+                            await fetchData();
+                            setRefreshing(false);
+                        }}
+                        colors={[COLORS.primary]}
+                        tintColor={COLORS.primary}
+                    />
+                }
+            >
                 {/* Header Information Section */}
                 <View style={styles.matchHeaderContent}>
                     <View style={styles.statusBadgeRow}>
@@ -319,57 +335,59 @@ export default function MatchDetails() {
                     <InfoBox icon="people" label="Type" value={match.matchType} color={COLORS.primary} />
                 </View>
 
-                {/* Room Config */}
-                <View style={styles.card}>
-                    <View style={styles.cardHeader}>
-                        <Ionicons name="create-outline" size={18} color={COLORS.primary} />
-                        <Text style={styles.cardTitle}>ROOM CONFIGURATION</Text>
-                    </View>
-                    <View style={styles.inputRow}>
-                        <View style={styles.inputGroup}>
-                            <Text style={styles.label}>Room ID</Text>
-                            <TextInput
-                                style={styles.input}
-                                value={customId}
-                                onChangeText={setCustomId}
-                                placeholder="Wait for Match"
-                                placeholderTextColor={COLORS.textSecondary}
-                            />
+                {/* Room Config - Only show before match is completed */}
+                {!isCompleted && !isClosed && (
+                    <View style={styles.card}>
+                        <View style={styles.cardHeader}>
+                            <Ionicons name="create-outline" size={18} color={COLORS.primary} />
+                            <Text style={styles.cardTitle}>ROOM CONFIGURATION</Text>
                         </View>
-                        <View style={styles.inputGroup}>
-                            <Text style={styles.label}>Password</Text>
-                            <TextInput
-                                style={styles.input}
-                                value={password}
-                                onChangeText={setPassword}
-                                placeholder="****"
-                                placeholderTextColor={COLORS.textSecondary}
-                            />
+                        <View style={styles.inputRow}>
+                            <View style={styles.inputGroup}>
+                                <Text style={styles.label}>Room ID</Text>
+                                <TextInput
+                                    style={styles.input}
+                                    value={customId}
+                                    onChangeText={setCustomId}
+                                    placeholder="Wait for Match"
+                                    placeholderTextColor={COLORS.textSecondary}
+                                />
+                            </View>
+                            <View style={styles.inputGroup}>
+                                <Text style={styles.label}>Password</Text>
+                                <TextInput
+                                    style={styles.input}
+                                    value={password}
+                                    onChangeText={setPassword}
+                                    placeholder="****"
+                                    placeholderTextColor={COLORS.textSecondary}
+                                />
+                            </View>
                         </View>
-                    </View>
-                    <TouchableOpacity
-                        onPress={handleUpdate}
-                        disabled={updating}
-                        activeOpacity={0.8}
-                        style={styles.updateBtn}
-                    >
-                        <LinearGradient
-                            colors={[COLORS.primary, COLORS.primaryDark]}
-                            start={{ x: 0, y: 0 }}
-                            end={{ x: 1, y: 0 }}
-                            style={styles.gradientBtn}
+                        <TouchableOpacity
+                            onPress={handleUpdate}
+                            disabled={updating}
+                            activeOpacity={0.8}
+                            style={styles.updateBtn}
                         >
-                            {updating ? (
-                                <ActivityIndicator color={COLORS.white} />
-                            ) : (
-                                <>
-                                    <Text style={styles.updateText}>Update Credentials</Text>
-                                    <Ionicons name="notifications-outline" size={18} color={COLORS.white} />
-                                </>
-                            )}
-                        </LinearGradient>
-                    </TouchableOpacity>
-                </View>
+                            <LinearGradient
+                                colors={[COLORS.primary, COLORS.primaryDark]}
+                                start={{ x: 0, y: 0 }}
+                                end={{ x: 1, y: 0 }}
+                                style={styles.gradientBtn}
+                            >
+                                {updating ? (
+                                    <ActivityIndicator color={COLORS.white} />
+                                ) : (
+                                    <>
+                                        <Text style={styles.updateText}>Update Credentials</Text>
+                                        <Ionicons name="notifications-outline" size={18} color={COLORS.white} />
+                                    </>
+                                )}
+                            </LinearGradient>
+                        </TouchableOpacity>
+                    </View>
+                )}
 
                 {/* Prize Details */}
                 <View style={styles.card}>
@@ -554,16 +572,18 @@ export default function MatchDetails() {
                     </View>
                 </View>
 
-                {/* Extra Actions Row (Push Alert) */}
-                <View style={{ paddingHorizontal: 20, marginBottom: 20 }}>
-                    <ActionButton
-                        icon="notifications"
-                        label="SEND PUSH ALERT"
-                        onPress={handleSendNotification}
-                        color="#4F46E5"
-                        loading={sendingNotification}
-                    />
-                </View>
+                {/* Extra Actions Row (Push Alert) - Only show before match is completed */}
+                {!isCompleted && !isClosed && (
+                    <View style={{ paddingHorizontal: 20, marginBottom: 20 }}>
+                        <ActionButton
+                            icon="notifications"
+                            label="SEND PUSH ALERT"
+                            onPress={handleSendNotification}
+                            color="#4F46E5"
+                            loading={sendingNotification}
+                        />
+                    </View>
+                )}
 
                 {/* Participants List */}
                 <View style={styles.partHeader}>

@@ -83,6 +83,10 @@ function MainLayout() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="match/[id]" options={{ title: 'Edit Match' }} />
         <Stack.Screen name="distribute/[id]" options={{ title: 'Distribute Prizes' }} />
+        <Stack.Screen name="rules/index" options={{ headerShown: false }} />
+        <Stack.Screen name="rules/create" options={{ headerShown: false }} />
+        <Stack.Screen name="rules/[id]" options={{ headerShown: false }} />
+
       </Stack>
       <StatusBar style="dark" />
     </ThemeProvider>

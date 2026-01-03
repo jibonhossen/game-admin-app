@@ -24,7 +24,10 @@ export const templateApi = {
     getAll: async (): Promise<MatchTemplate[]> => {
         try {
             const data = await AsyncStorage.getItem(TEMPLATES_STORAGE_KEY);
-            return data ? JSON.parse(data) : [];
+            console.log('Raw templates data from AsyncStorage:', data);
+            const templates = data ? JSON.parse(data) : [];
+            console.log('Parsed templates count:', templates.length);
+            return templates;
         } catch (error) {
             console.error('Failed to get templates:', error);
             return [];
@@ -32,32 +35,50 @@ export const templateApi = {
     },
 
     create: async (template: Omit<MatchTemplate, 'id' | 'createdAt'>): Promise<MatchTemplate> => {
-        const templates = await templateApi.getAll();
-        const newTemplate: MatchTemplate = {
-            ...template,
-            id: `template_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            createdAt: new Date().toISOString(),
-        };
-        templates.push(newTemplate);
-        await AsyncStorage.setItem(TEMPLATES_STORAGE_KEY, JSON.stringify(templates));
-        return newTemplate;
+        try {
+            const templates = await templateApi.getAll();
+            const newTemplate: MatchTemplate = {
+                ...template,
+                id: `template_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                createdAt: new Date().toISOString(),
+            };
+            templates.push(newTemplate);
+            await AsyncStorage.setItem(TEMPLATES_STORAGE_KEY, JSON.stringify(templates));
+            console.log('Template saved successfully:', newTemplate.name);
+            return newTemplate;
+        } catch (error) {
+            console.error('Failed to create template:', error);
+            throw error;
+        }
     },
 
     update: async (id: string, updates: Partial<MatchTemplate>): Promise<MatchTemplate | null> => {
-        const templates = await templateApi.getAll();
-        const index = templates.findIndex(t => t.id === id);
-        if (index === -1) return null;
+        try {
+            const templates = await templateApi.getAll();
+            const index = templates.findIndex(t => t.id === id);
+            if (index === -1) return null;
 
-        templates[index] = { ...templates[index], ...updates };
-        await AsyncStorage.setItem(TEMPLATES_STORAGE_KEY, JSON.stringify(templates));
-        return templates[index];
+            templates[index] = { ...templates[index], ...updates };
+            await AsyncStorage.setItem(TEMPLATES_STORAGE_KEY, JSON.stringify(templates));
+            console.log('Template updated successfully:', templates[index].name);
+            return templates[index];
+        } catch (error) {
+            console.error('Failed to update template:', error);
+            throw error;
+        }
     },
 
     delete: async (id: string): Promise<boolean> => {
-        const templates = await templateApi.getAll();
-        const filtered = templates.filter(t => t.id !== id);
-        await AsyncStorage.setItem(TEMPLATES_STORAGE_KEY, JSON.stringify(filtered));
-        return true;
+        try {
+            const templates = await templateApi.getAll();
+            const filtered = templates.filter(t => t.id !== id);
+            await AsyncStorage.setItem(TEMPLATES_STORAGE_KEY, JSON.stringify(filtered));
+            console.log('Template deleted successfully:', id);
+            return true;
+        } catch (error) {
+            console.error('Failed to delete template:', error);
+            throw error;
+        }
     },
 };
 
@@ -231,6 +252,14 @@ export const historyApi = {
     },
     createRule: async (rule: any) => {
         const response = await historyAxios.post('/api/rules', rule);
+        return response.data;
+    },
+    updateRule: async (id: string, rule: any) => {
+        const response = await historyAxios.put(`/api/rules/${id}`, rule);
+        return response.data;
+    },
+    deleteRule: async (id: string) => {
+        const response = await historyAxios.delete(`/api/rules/${id}`);
         return response.data;
     },
     logMatch: async (log: any) => {

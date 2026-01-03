@@ -37,7 +37,11 @@ export default function RuleList() {
     };
 
     const renderItem = ({ item }: { item: PrizeRule }) => (
-        <View style={styles.card}>
+        <TouchableOpacity
+            style={styles.card}
+            onPress={() => router.push(`/rules/${item.id}`)}
+            activeOpacity={0.7}
+        >
             <View style={styles.cardHeader}>
                 <View>
                     <Text style={styles.ruleName}>{item.name}</Text>
@@ -67,7 +71,7 @@ export default function RuleList() {
                     </Text>
                 )}
             </View>
-        </View>
+        </TouchableOpacity>
     );
 
     return (

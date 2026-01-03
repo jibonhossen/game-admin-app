@@ -96,7 +96,7 @@ export default function CreateMatch() {
 
         try {
             setSavingTemplate(true);
-            await templateApi.create({
+            const templateData = {
                 name: templateName.trim(),
                 title: formData.title,
                 matchType: formData.matchType as 'Solo' | 'Duo' | 'Squad',
@@ -107,12 +107,18 @@ export default function CreateMatch() {
                 perKill: Number(formData.perKill) || 0,
                 totalSlots: Number(formData.totalSlots),
                 prizeDetails: formData.prizeDetails,
-            });
+            };
+            console.log('Saving template with data:', templateData);
+
+            const savedTemplate = await templateApi.create(templateData);
+            console.log('Template saved successfully:', savedTemplate);
+
             setShowSaveModal(false);
             setTemplateName('');
             await fetchData();
             showAlert({ title: 'Success', message: 'Template saved successfully!', type: 'success' });
         } catch (error) {
+            console.error('Failed to save template:', error);
             showAlert({ title: 'Error', message: 'Failed to save template', type: 'error' });
         } finally {
             setSavingTemplate(false);

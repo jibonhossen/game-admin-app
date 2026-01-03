@@ -13,6 +13,7 @@ import {
     Dimensions,
     ScrollView,
     Animated,
+    Modal,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { COLORS, SPACING, FONTS } from '../../src/constants/theme';
@@ -24,7 +25,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAlert } from '../../src/contexts/AlertContext';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 
 // Enhanced color palette
 const THEME = {
@@ -39,6 +40,8 @@ const THEME = {
     cardAlt: '#f8fafc',
     gradient1: '#6366f1',
     gradient2: '#8b5cf6',
+    modalBg: '#0f172a',
+    modalCard: '#1e293b',
 };
 
 interface ParticipantWithPrize {
@@ -50,6 +53,13 @@ interface ParticipantWithPrize {
     breakdown?: string;
     rank?: number;
     kills?: number;
+}
+
+interface SelectedPlayer {
+    uid: string;
+    username: string;
+    freeFireName?: string;
+    index: number;
 }
 
 export default function DistributePrizes() {
@@ -67,6 +77,14 @@ export default function DistributePrizes() {
     const [expandedCard, setExpandedCard] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [showWinnersOnly, setShowWinnersOnly] = useState(false);
+
+    // Modal state
+    const [modalVisible, setModalVisible] = useState(false);
+    const [selectedPlayer, setSelectedPlayer] = useState<SelectedPlayer | null>(null);
+    const [tempRank, setTempRank] = useState('');
+    const [tempKills, setTempKills] = useState('');
+    const modalScale = useState(new Animated.Value(0.9))[0];
+    const modalOpacity = useState(new Animated.Value(0))[0];
 
     useEffect(() => {
         fetchData();
@@ -184,6 +202,145 @@ export default function DistributePrizes() {
 
         return filtered;
     }, [participants, searchQuery, showWinnersOnly, winners]);
+
+    // Modal functions
+    const openPlayerModal = (player: any, index: number) => {
+        setSelectedPlayer({
+            uid: player.uid,
+            username: player.username,
+            freeFireName: player.freeFireName,
+            index: index,
+        });
+        const currentStats = stats[player.uid] || { rank: '', kills: '' };
+        setTempRank(currentStats.rank);
+        setTempKills(currentStats.kills);
+        setModalVisible(true);
+
+        Animated.parallel([
+            Animated.spring(modalScale, {
+                toValue: 1,
+                friction: 8,
+                tension: 65,
+                useNativeDriver: true,
+            }),
+            Animated.timing(modalOpacity, {
+                toValue: 1,
+                duration: 200,
+                useNativeDriver: true,
+            }),
+        ]).start();
+    };
+
+    const closeModal = () => {
+        Animated.parallel([
+            Animated.timing(modalScale, {
+                toValue: 0.9,
+                duration: 150,
+                useNativeDriver: true,
+            }),
+            Animated.timing(modalOpacity, {
+                toValue: 0,
+                duration: 150,
+                useNativeDriver: true,
+            }),
+        ]).start(() => {
+            setModalVisible(false);
+            setSelectedPlayer(null);
+            setTempRank('');
+            setTempKills('');
+        });
+    };
+
+    const handleModalSave = () => {
+        if (!selectedPlayer) {
+            closeModal();
+            return;
+        }
+
+        const rankValue = parseInt(tempRank) || 0;
+
+        // Check for duplicate ranks (only for rank_kill and fixed_list, not equal_share)
+        if (rankValue > 0 && rule && (rule.type === 'rank_kill' || rule.type === 'fixed_list')) {
+            const existingPlayerWithRank = Object.entries(stats).find(([uid, playerStats]) => {
+                // Skip the current player being edited
+                if (uid === selectedPlayer.uid) return false;
+                // Check if another player already has this rank
+                return parseInt(playerStats.rank) === rankValue;
+            });
+
+            if (existingPlayerWithRank) {
+                const existingPlayer = participants.find(p => p.uid === existingPlayerWithRank[0]);
+                const existingName = existingPlayer?.username || existingPlayer?.freeFireName || 'Another player';
+
+                showAlert({
+                    title: 'Duplicate Rank',
+                    message: `Rank #${rankValue} is already assigned to "${existingName}". Each player must have a unique rank position.`,
+                    type: 'warning',
+                });
+                return;
+            }
+        }
+
+        setStats(prev => ({
+            ...prev,
+            [selectedPlayer.uid]: {
+                rank: tempRank,
+                kills: tempKills,
+            }
+        }));
+        closeModal();
+    };
+
+    const handleModalReset = () => {
+        setTempRank('');
+        setTempKills('');
+    };
+
+    const handleEqualShareToggle = () => {
+        if (selectedPlayer) {
+            const newRank = tempRank === '1' ? '0' : '1';
+            setTempRank(newRank);
+        }
+    };
+
+    // Calculate prize preview in real-time based on tempRank and tempKills
+    const getModalPrizePreview = (): number => {
+        if (!rule || !selectedPlayer) return 0;
+
+        const rank = parseInt(tempRank) || 0;
+        const kills = parseInt(tempKills) || 0;
+
+        if (rule.type === 'rank_kill') {
+            let prize = 0;
+            // Add rank reward
+            const rankKey = rank.toString();
+            if (rule.config.rank_rewards && rule.config.rank_rewards[rankKey]) {
+                prize += rule.config.rank_rewards[rankKey];
+            }
+            // Add kill reward
+            if (kills > 0 && rule.config.per_kill) {
+                prize += kills * rule.config.per_kill;
+            }
+            return prize;
+        } else if (rule.type === 'equal_share') {
+            if (rank === 1) {
+                // Count current winners including this player if they're marked as winner
+                const currentWinners = Object.entries(stats).filter(([uid, s]) =>
+                    s.rank === '1' && uid !== selectedPlayer.uid
+                ).length;
+                const totalWinners = currentWinners + 1; // +1 for this player
+                return Math.floor((rule.config.total_prize || 0) / totalWinners);
+            }
+            return 0;
+        } else if (rule.type === 'fixed_list') {
+            if (rank > 0 && rule.config.prizes && rule.config.prizes[rank - 1]) {
+                return rule.config.prizes[rank - 1];
+            }
+            return 0;
+        }
+
+        return 0;
+    };
 
     const sendPrizeNotifications = async (winnersData: { uid: string; amount: number }[]) => {
         try {
@@ -420,9 +577,14 @@ export default function DistributePrizes() {
         const prizeAmount = amounts[item.uid] ? Number(amounts[item.uid]) : 0;
         const isWinner = prizeAmount > 0;
         const statData = stats[item.uid] || { rank: '', kills: '' };
+        const hasStats = statData.rank !== '' || statData.kills !== '';
 
         return (
-            <View style={[styles.playerCard, isWinner && styles.playerCardWinner]}>
+            <TouchableOpacity
+                style={[styles.playerCard, isWinner && styles.playerCardWinner]}
+                onPress={() => openPlayerModal(item, index)}
+                activeOpacity={0.7}
+            >
                 {/* Main Row */}
                 <View style={styles.playerMainRow}>
                     {/* Serial Number & Info */}
@@ -437,98 +599,40 @@ export default function DistributePrizes() {
                             <Text style={styles.playerName} numberOfLines={1}>
                                 {item.username}
                             </Text>
-                            <Text style={styles.playerMetaText} numberOfLines={1}>
-                                FF: {item.freeFireName || 'N/A'}
-                            </Text>
-                        </View>
-                    </View>
-
-                    {/* Stats Input Section */}
-                    <View style={styles.playerRight}>
-                        {rule && (
-                            <View style={styles.statsContainer}>
-                                {rule.type === 'rank_kill' && (
-                                    <>
-                                        <View style={styles.statInputGroup}>
-                                            <Text style={styles.statInputLabel}>Rank</Text>
-                                            <TextInput
-                                                style={[styles.statInputBox, styles.rankInput]}
-                                                placeholder="#"
-                                                placeholderTextColor={THEME.muted}
-                                                keyboardType="number-pad"
-                                                value={statData.rank}
-                                                onChangeText={(t) => handleStatsChange(item.uid, 'rank', t)}
-                                                maxLength={2}
-                                                returnKeyType="done"
-                                            />
-                                        </View>
-
-                                        <View style={styles.statInputGroup}>
-                                            <Text style={styles.statInputLabel}>Kills</Text>
-                                            <TextInput
-                                                style={[styles.statInputBox, styles.killsInput]}
-                                                placeholder="0"
-                                                placeholderTextColor={THEME.muted}
-                                                keyboardType="number-pad"
-                                                value={statData.kills}
-                                                onChangeText={(t) => handleStatsChange(item.uid, 'kills', t)}
-                                                maxLength={2}
-                                                returnKeyType="done"
-                                            />
-                                        </View>
-                                    </>
-                                )}
-
-                                {rule.type === 'equal_share' && (
-                                    <TouchableOpacity
-                                        style={[
-                                            styles.winnerToggle,
-                                            statData.rank === '1' && styles.winnerToggleActive
-                                        ]}
-                                        onPress={() => handleStatsChange(
-                                            item.uid,
-                                            'rank',
-                                            statData.rank === '1' ? '0' : '1'
+                            <View style={styles.playerMetaRow}>
+                                <Text style={styles.playerMetaText} numberOfLines={1}>
+                                    FF: {item.freeFireName || 'N/A'}
+                                </Text>
+                                {hasStats && (
+                                    <View style={styles.playerStatsBadge}>
+                                        {statData.rank !== '' && (
+                                            <View style={styles.miniStatBadge}>
+                                                <Ionicons name="medal-outline" size={10} color={THEME.cyan} />
+                                                <Text style={styles.miniStatText}>#{statData.rank}</Text>
+                                            </View>
                                         )}
-                                    >
-                                        <Ionicons
-                                            name={statData.rank === '1' ? "checkmark-circle" : "ellipse-outline"}
-                                            size={20}
-                                            color={statData.rank === '1' ? COLORS.white : THEME.accent}
-                                        />
-                                        <Text style={[
-                                            styles.winnerToggleText,
-                                            statData.rank === '1' && styles.winnerToggleTextActive
-                                        ]}>
-                                            Win
-                                        </Text>
-                                    </TouchableOpacity>
-                                )}
-
-                                {rule.type === 'fixed_list' && (
-                                    <View style={styles.statInputGroup}>
-                                        <Text style={styles.statInputLabel}>Pos</Text>
-                                        <TextInput
-                                            style={[styles.statInputBox, styles.rankInput]}
-                                            placeholder="#"
-                                            placeholderTextColor={THEME.muted}
-                                            keyboardType="number-pad"
-                                            value={statData.rank}
-                                            onChangeText={(t) => handleStatsChange(item.uid, 'rank', t)}
-                                            maxLength={2}
-                                            returnKeyType="done"
-                                        />
+                                        {statData.kills !== '' && statData.kills !== '0' && (
+                                            <View style={styles.miniStatBadge}>
+                                                <Ionicons name="skull-outline" size={10} color={THEME.rose} />
+                                                <Text style={styles.miniStatText}>{statData.kills}</Text>
+                                            </View>
+                                        )}
                                     </View>
                                 )}
                             </View>
-                        )}
+                        </View>
+                    </View>
 
-                        {/* Prize Display (Read-only) */}
+                    {/* Prize Display */}
+                    <View style={styles.playerRight}>
                         <View style={[styles.prizeDisplay, isWinner && styles.prizeDisplayWinner]}>
                             <Text style={styles.prizeCurrency}>৳</Text>
                             <Text style={[styles.prizeAmount, isWinner && styles.prizeAmountWinner]}>
                                 {prizeAmount || '0'}
                             </Text>
+                        </View>
+                        <View style={styles.editIconWrap}>
+                            <Ionicons name="create-outline" size={16} color={THEME.muted} />
                         </View>
                     </View>
                 </View>
@@ -539,7 +643,195 @@ export default function DistributePrizes() {
                         <Ionicons name="trophy" size={10} color={COLORS.white} />
                     </View>
                 )}
-            </View>
+            </TouchableOpacity>
+        );
+    };
+
+    const renderPlayerModal = () => {
+        if (!selectedPlayer) return null;
+
+        const prizeAmount = amounts[selectedPlayer.uid] ? Number(amounts[selectedPlayer.uid]) : 0;
+
+        return (
+            <Modal
+                visible={modalVisible}
+                transparent
+                animationType="none"
+                onRequestClose={closeModal}
+            >
+                <View style={styles.modalOverlay}>
+                    <TouchableOpacity
+                        style={styles.modalBackdrop}
+                        activeOpacity={1}
+                        onPress={closeModal}
+                    />
+                    <Animated.View
+                        style={[
+                            styles.modalContainer,
+                            {
+                                transform: [{ scale: modalScale }],
+                                opacity: modalOpacity,
+                            }
+                        ]}
+                    >
+                        <LinearGradient
+                            colors={[THEME.modalBg, THEME.modalCard]}
+                            style={styles.modalContent}
+                        >
+                            {/* Modal Header */}
+                            <View style={styles.modalHeader}>
+                                <View style={styles.modalPlayerInfo}>
+                                    <View style={styles.modalPlayerAvatar}>
+                                        <Text style={styles.modalAvatarText}>
+                                            {(selectedPlayer.freeFireName || selectedPlayer.username || 'U').charAt(0).toUpperCase()}
+                                        </Text>
+                                    </View>
+                                    <View>
+                                        <Text style={styles.modalPlayerName}>
+                                            {selectedPlayer.username || 'Unknown Player'}
+                                        </Text>
+                                        <Text style={styles.modalPlayerSub}>
+                                            FF: {selectedPlayer.freeFireName || 'N/A'}
+                                        </Text>
+                                    </View>
+                                </View>
+                                <TouchableOpacity
+                                    style={styles.modalCloseBtn}
+                                    onPress={closeModal}
+                                >
+                                    <Ionicons name="close" size={24} color={THEME.muted} />
+                                </TouchableOpacity>
+                            </View>
+
+                            {/* Modal Divider */}
+                            <View style={styles.modalDivider} />
+
+                            {/* Input Fields */}
+                            {rule?.type === 'rank_kill' && (
+                                <View style={styles.modalInputSection}>
+                                    <Text style={styles.modalSectionTitle}>Enter Player Stats</Text>
+
+                                    <View style={styles.modalInputRow}>
+                                        <View style={styles.modalInputGroup}>
+                                            <View style={styles.modalInputHeader}>
+                                                <Ionicons name="medal" size={18} color={THEME.cyan} />
+                                                <Text style={styles.modalInputLabel}>Rank Position</Text>
+                                            </View>
+                                            <TextInput
+                                                style={[styles.modalInput, styles.modalInputRank]}
+
+                                                placeholderTextColor={THEME.muted}
+                                                keyboardType="number-pad"
+                                                value={tempRank}
+                                                onChangeText={setTempRank}
+                                                maxLength={2}
+                                            />
+                                        </View>
+
+                                        <View style={styles.modalInputGroup}>
+                                            <View style={styles.modalInputHeader}>
+                                                <Ionicons name="skull" size={18} color={THEME.rose} />
+                                                <Text style={styles.modalInputLabel}>Total Kills</Text>
+                                            </View>
+                                            <TextInput
+                                                style={[styles.modalInput, styles.modalInputKills]}
+
+                                                placeholderTextColor={THEME.muted}
+                                                keyboardType="number-pad"
+                                                value={tempKills}
+                                                onChangeText={setTempKills}
+                                                maxLength={2}
+                                            />
+                                        </View>
+                                    </View>
+                                </View>
+                            )}
+
+                            {rule?.type === 'equal_share' && (
+                                <View style={styles.modalInputSection}>
+                                    <Text style={styles.modalSectionTitle}>Winner Selection</Text>
+
+                                    <TouchableOpacity
+                                        style={[
+                                            styles.modalWinnerToggle,
+                                            tempRank === '1' && styles.modalWinnerToggleActive
+                                        ]}
+                                        onPress={handleEqualShareToggle}
+                                        activeOpacity={0.8}
+                                    >
+                                        <Ionicons
+                                            name={tempRank === '1' ? "checkmark-circle" : "ellipse-outline"}
+                                            size={28}
+                                            color={tempRank === '1' ? COLORS.white : THEME.accent}
+                                        />
+                                        <Text style={[
+                                            styles.modalWinnerToggleText,
+                                            tempRank === '1' && styles.modalWinnerToggleTextActive
+                                        ]}>
+                                            {tempRank === '1' ? 'Selected as Winner' : 'Tap to Mark as Winner'}
+                                        </Text>
+                                    </TouchableOpacity>
+                                </View>
+                            )}
+
+                            {rule?.type === 'fixed_list' && (
+                                <View style={styles.modalInputSection}>
+                                    <Text style={styles.modalSectionTitle}>Enter Position</Text>
+
+                                    <View style={styles.modalInputGroup}>
+                                        <View style={styles.modalInputHeader}>
+                                            <Ionicons name="podium" size={18} color={THEME.purple} />
+                                            <Text style={styles.modalInputLabel}>Position Number</Text>
+                                        </View>
+                                        <TextInput
+                                            style={[styles.modalInput, styles.modalInputRank]}
+                                            placeholder="Enter position..."
+                                            placeholderTextColor={THEME.muted}
+                                            keyboardType="number-pad"
+                                            value={tempRank}
+                                            onChangeText={setTempRank}
+                                            maxLength={2}
+                                        />
+                                    </View>
+                                </View>
+                            )}
+
+                            {/* Prize Preview */}
+                            <View style={styles.modalPrizePreview}>
+                                <Text style={styles.modalPrizeLabel}>Calculated Prize</Text>
+                                <Text style={styles.modalPrizeValue}>৳{getModalPrizePreview()}</Text>
+                            </View>
+
+                            {/* Action Buttons */}
+                            <View style={styles.modalActions}>
+                                <TouchableOpacity
+                                    style={styles.modalResetBtn}
+                                    onPress={handleModalReset}
+                                >
+                                    <Ionicons name="refresh" size={20} color={THEME.rose} />
+                                    <Text style={styles.modalResetText}>Reset</Text>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity
+                                    style={styles.modalSaveBtn}
+                                    onPress={handleModalSave}
+                                    activeOpacity={0.8}
+                                >
+                                    <LinearGradient
+                                        colors={[THEME.accent, '#059669']}
+                                        start={{ x: 0, y: 0 }}
+                                        end={{ x: 1, y: 0 }}
+                                        style={styles.modalSaveBtnGradient}
+                                    >
+                                        <Ionicons name="checkmark-circle" size={20} color={COLORS.white} />
+                                        <Text style={styles.modalSaveText}>Save Details</Text>
+                                    </LinearGradient>
+                                </TouchableOpacity>
+                            </View>
+                        </LinearGradient>
+                    </Animated.View>
+                </View>
+            </Modal>
         );
     };
 
@@ -638,18 +930,10 @@ export default function DistributePrizes() {
                             <Text style={styles.sectionTitle}>
                                 Players ({filteredParticipants.length})
                             </Text>
-                            {rule?.type === 'rank_kill' && (
-                                <View style={styles.legendRow}>
-                                    <View style={styles.legendItem}>
-                                        <View style={[styles.legendDot, { backgroundColor: THEME.cyan }]} />
-                                        <Text style={styles.legendText}>Rank</Text>
-                                    </View>
-                                    <View style={styles.legendItem}>
-                                        <View style={[styles.legendDot, { backgroundColor: THEME.rose }]} />
-                                        <Text style={styles.legendText}>Kills</Text>
-                                    </View>
-                                </View>
-                            )}
+                            <View style={styles.tapHint}>
+                                <Ionicons name="hand-left-outline" size={12} color={THEME.muted} />
+                                <Text style={styles.tapHintText}>Tap to edit</Text>
+                            </View>
                         </View>
                     </View>
                 }
@@ -665,6 +949,9 @@ export default function DistributePrizes() {
 
             {/* Footer - Static at bottom */}
             {renderFooter()}
+
+            {/* Player Edit Modal */}
+            {renderPlayerModal()}
         </View>
     );
 }
@@ -798,17 +1085,6 @@ const styles = StyleSheet.create({
         color: COLORS.text,
         flex: 1,
     },
-    modeToggle: {
-        width: 36,
-        height: 36,
-        borderRadius: 10,
-        backgroundColor: 'rgba(139, 92, 246, 0.1)',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    modeToggleActive: {
-        backgroundColor: THEME.purple,
-    },
     ruleDetails: {
         gap: 10,
     },
@@ -847,20 +1123,6 @@ const styles = StyleSheet.create({
         fontSize: 11,
         fontFamily: FONTS.bold,
         color: THEME.accent,
-    },
-    manualModeInfo: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        backgroundColor: 'rgba(245, 158, 11, 0.08)',
-        borderRadius: 8,
-        padding: 10,
-    },
-    manualModeText: {
-        fontSize: 12,
-        fontFamily: FONTS.medium,
-        color: THEME.gold,
-        flex: 1,
     },
 
     // Filter Section
@@ -921,6 +1183,16 @@ const styles = StyleSheet.create({
         fontSize: 13,
         fontFamily: FONTS.bold,
         color: THEME.slate,
+    },
+    tapHint: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    tapHintText: {
+        fontSize: 11,
+        fontFamily: FONTS.medium,
+        color: THEME.muted,
     },
     legendRow: {
         flexDirection: 'row',
@@ -995,12 +1267,35 @@ const styles = StyleSheet.create({
     },
     playerInfo: {
         flex: 1,
-        gap: 2,
+        gap: 4,
     },
     playerName: {
         fontSize: 14,
         fontFamily: FONTS.bold,
         color: COLORS.text,
+    },
+    playerMetaRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    playerStatsBadge: {
+        flexDirection: 'row',
+        gap: 6,
+    },
+    miniStatBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 3,
+        backgroundColor: THEME.cardAlt,
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 4,
+    },
+    miniStatText: {
+        fontSize: 10,
+        fontFamily: FONTS.bold,
+        color: THEME.slate,
     },
     playerMeta: {
         flexDirection: 'row',
@@ -1015,67 +1310,17 @@ const styles = StyleSheet.create({
     playerRight: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 10,
-    },
-
-    // Stats Container
-    statsContainer: {
-        flexDirection: 'row',
         gap: 8,
     },
-    statInputGroup: {
+    editIconWrap: {
+        width: 28,
+        height: 28,
+        borderRadius: 8,
+        backgroundColor: THEME.cardAlt,
+        justifyContent: 'center',
         alignItems: 'center',
-        gap: 3,
-    },
-    statInputBox: {
-        width: 48,
-        height: 40,
-        borderRadius: 10,
-        borderWidth: 1.5,
-        fontSize: 16,
-        fontFamily: FONTS.bold,
-        color: COLORS.text,
-        textAlign: 'center',
-        paddingVertical: 0,
-        paddingHorizontal: 4,
-    },
-    rankInput: {
-        backgroundColor: 'rgba(6, 182, 212, 0.15)',
-        borderColor: 'rgba(6, 182, 212, 0.4)',
-    },
-    killsInput: {
-        backgroundColor: 'rgba(244, 63, 94, 0.15)',
-        borderColor: 'rgba(244, 63, 94, 0.4)',
-    },
-    statInputLabel: {
-        fontSize: 10,
-        fontFamily: FONTS.bold,
-        color: THEME.muted,
-        marginBottom: 4,
-    },
-
-    // Winner Toggle (Equal Share)
-    winnerToggle: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 6,
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-        borderRadius: 10,
-        borderWidth: 1.5,
-        borderColor: THEME.accent,
-        backgroundColor: 'rgba(16, 185, 129, 0.08)',
-    },
-    winnerToggleActive: {
-        backgroundColor: THEME.accent,
-    },
-    winnerToggleText: {
-        fontSize: 12,
-        fontFamily: FONTS.bold,
-        color: THEME.accent,
-    },
-    winnerToggleTextActive: {
-        color: COLORS.white,
+        borderWidth: 1,
+        borderColor: COLORS.border,
     },
 
     // Prize Display
@@ -1083,10 +1328,10 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         backgroundColor: THEME.cardAlt,
-        paddingHorizontal: 10,
-        paddingVertical: 6,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
         borderRadius: 10,
-        minWidth: 80,
+        minWidth: 70,
         justifyContent: 'center',
         borderWidth: 1,
         borderColor: COLORS.border,
@@ -1109,17 +1354,6 @@ const styles = StyleSheet.create({
     prizeAmountWinner: {
         color: THEME.accent,
     },
-    prizeInputField: {
-        fontSize: 16,
-        fontFamily: FONTS.bold,
-        color: THEME.muted,
-        textAlign: 'center',
-        minWidth: 50,
-        padding: 0,
-    },
-    prizeInputFieldWinner: {
-        color: THEME.accent,
-    },
 
     // Winner Badge
     winnerBadge: {
@@ -1135,36 +1369,6 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
 
-    // Expanded Section
-    expandedSection: {
-        marginTop: 12,
-        paddingTop: 12,
-        borderTopWidth: 1,
-        borderTopColor: COLORS.border,
-    },
-    breakdownCard: {
-        backgroundColor: THEME.cardAlt,
-        borderRadius: 10,
-        padding: 12,
-    },
-    breakdownHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 6,
-        marginBottom: 8,
-    },
-    breakdownTitle: {
-        fontSize: 11,
-        fontFamily: FONTS.bold,
-        color: THEME.purple,
-    },
-    breakdownText: {
-        fontSize: 12,
-        fontFamily: FONTS.medium,
-        color: THEME.slate,
-        lineHeight: 18,
-    },
-
     // Empty State
     emptyState: {
         alignItems: 'center',
@@ -1176,6 +1380,199 @@ const styles = StyleSheet.create({
         fontFamily: FONTS.medium,
         color: THEME.muted,
         textAlign: 'center',
+    },
+
+    // Modal Styles
+    modalOverlay: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    modalBackdrop: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    },
+    modalContainer: {
+        width: width - 40,
+        maxWidth: 400,
+    },
+    modalContent: {
+        borderRadius: 24,
+        padding: 24,
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.1)',
+    },
+    modalHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    modalPlayerInfo: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+    },
+    modalPlayerAvatar: {
+        width: 48,
+        height: 48,
+        borderRadius: 14,
+        backgroundColor: THEME.gradient1,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    modalAvatarText: {
+        fontSize: 20,
+        fontFamily: FONTS.bold,
+        color: COLORS.white,
+    },
+    modalPlayerName: {
+        fontSize: 16,
+        fontFamily: FONTS.bold,
+        color: COLORS.white,
+    },
+    modalPlayerSub: {
+        fontSize: 12,
+        fontFamily: FONTS.medium,
+        color: THEME.muted,
+    },
+    modalCloseBtn: {
+        width: 36,
+        height: 36,
+        borderRadius: 10,
+        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    modalDivider: {
+        height: 1,
+        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+        marginVertical: 20,
+    },
+    modalInputSection: {
+        gap: 16,
+    },
+    modalSectionTitle: {
+        fontSize: 14,
+        fontFamily: FONTS.bold,
+        color: COLORS.white,
+        marginBottom: 4,
+    },
+    modalInputRow: {
+        flexDirection: 'row',
+        gap: 12,
+    },
+    modalInputGroup: {
+        flex: 1,
+        gap: 8,
+    },
+    modalInputHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    modalInputLabel: {
+        fontSize: 12,
+        fontFamily: FONTS.medium,
+        color: THEME.muted,
+    },
+    modalInput: {
+        backgroundColor: 'rgba(255, 255, 255, 0.08)',
+        borderRadius: 12,
+        paddingHorizontal: 16,
+        paddingVertical: 14,
+        fontSize: 18,
+        fontFamily: FONTS.bold,
+        color: COLORS.white,
+        borderWidth: 1.5,
+        textAlign: 'center',
+    },
+    modalInputRank: {
+        borderColor: 'rgba(6, 182, 212, 0.4)',
+    },
+    modalInputKills: {
+        borderColor: 'rgba(244, 63, 94, 0.4)',
+    },
+    modalWinnerToggle: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 12,
+        paddingVertical: 18,
+        borderRadius: 14,
+        borderWidth: 2,
+        borderColor: THEME.accent,
+        backgroundColor: 'rgba(16, 185, 129, 0.08)',
+    },
+    modalWinnerToggleActive: {
+        backgroundColor: THEME.accent,
+    },
+    modalWinnerToggleText: {
+        fontSize: 16,
+        fontFamily: FONTS.bold,
+        color: THEME.accent,
+    },
+    modalWinnerToggleTextActive: {
+        color: COLORS.white,
+    },
+    modalPrizePreview: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        backgroundColor: 'rgba(245, 158, 11, 0.15)',
+        borderRadius: 12,
+        padding: 14,
+        marginTop: 16,
+        borderWidth: 1,
+        borderColor: 'rgba(245, 158, 11, 0.3)',
+    },
+    modalPrizeLabel: {
+        fontSize: 13,
+        fontFamily: FONTS.medium,
+        color: THEME.gold,
+    },
+    modalPrizeValue: {
+        fontSize: 22,
+        fontFamily: FONTS.bold,
+        color: THEME.gold,
+    },
+    modalActions: {
+        flexDirection: 'row',
+        gap: 12,
+        marginTop: 20,
+    },
+    modalResetBtn: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        paddingVertical: 14,
+        borderRadius: 12,
+        borderWidth: 1.5,
+        borderColor: THEME.rose,
+        backgroundColor: 'rgba(244, 63, 94, 0.08)',
+    },
+    modalResetText: {
+        fontSize: 14,
+        fontFamily: FONTS.bold,
+        color: THEME.rose,
+    },
+    modalSaveBtn: {
+        flex: 2,
+        borderRadius: 12,
+        overflow: 'hidden',
+    },
+    modalSaveBtnGradient: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        paddingVertical: 14,
+    },
+    modalSaveText: {
+        fontSize: 14,
+        fontFamily: FONTS.bold,
+        color: COLORS.white,
     },
 
     // Footer

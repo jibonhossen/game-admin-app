@@ -60,32 +60,12 @@ export default function TabLayout() {
                 }}
             />
             <Tabs.Screen
-                name="templates"
-                options={{
-                    title: 'Templates',
-                    tabBarLabel: 'Templates',
-                    tabBarIcon: ({ color, size }) => (
-                        <Ionicons name="document-text" size={size} color={color} />
-                    ),
-                }}
-            />
-            <Tabs.Screen
                 name="notifications"
                 options={{
                     title: 'Direct Alert',
                     tabBarLabel: 'Alerts',
                     tabBarIcon: ({ color, size }) => (
                         <Ionicons name="notifications" size={size} color={color} />
-                    ),
-                }}
-            />
-            <Tabs.Screen
-                name="users"
-                options={{
-                    title: 'Users',
-                    tabBarLabel: 'Users',
-                    tabBarIcon: ({ color, size }) => (
-                        <Ionicons name="people" size={size} color={color} />
                     ),
                 }}
             />
@@ -97,6 +77,21 @@ export default function TabLayout() {
                     tabBarIcon: ({ color, size }) => (
                         <Ionicons name="settings" size={size} color={color} />
                     ),
+                }}
+            />
+            {/* Hidden tabs - accessible from Settings page */}
+            <Tabs.Screen
+                name="users"
+                options={{
+                    title: 'Users',
+                    href: null, // Hide from tab bar
+                }}
+            />
+            <Tabs.Screen
+                name="templates"
+                options={{
+                    title: 'Templates',
+                    href: null, // Hide from tab bar
                 }}
             />
         </Tabs>
