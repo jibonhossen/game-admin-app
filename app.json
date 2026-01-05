@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "admin-app",
+    "name": "Admin",
     "slug": "admin-app",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -15,7 +15,7 @@
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/a-logo.png",
+        "foregroundImage": "./assets/images/a-logo.jpg",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
