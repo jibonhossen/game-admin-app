@@ -73,6 +73,8 @@ export default function DistributePrizes() {
     const [amounts, setAmounts] = useState<{ [key: string]: string }>({});
     const [stats, setStats] = useState<{ [key: string]: { rank: string, kills: string } }>({});
     const [distributing, setDistributing] = useState(false);
+    const [distributionComplete, setDistributionComplete] = useState(false);
+    const [closingMatch, setClosingMatch] = useState(false);
     const [rule, setRule] = useState<PrizeRule | null>(null);
     const [expandedCard, setExpandedCard] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
@@ -85,6 +87,10 @@ export default function DistributePrizes() {
     const [tempKills, setTempKills] = useState('');
     const modalScale = useState(new Animated.Value(0.9))[0];
     const modalOpacity = useState(new Animated.Value(0))[0];
+
+    // Refund state
+    const [refunds, setRefunds] = useState<{ [key: string]: 'full' | 'half' | 'none' }>({});
+    const [tempRefundType, setTempRefundType] = useState<'full' | 'half' | 'none'>('none');
 
     useEffect(() => {
         fetchData();
@@ -182,6 +188,43 @@ export default function DistributePrizes() {
     const totalPrize = Object.values(amounts).reduce((acc, curr) => acc + (Number(curr) || 0), 0);
     const winners = getWinners();
 
+    // Helper to safely parse teamMembers (may already be an array or JSON string)
+    const safeParseTeamMembers = (teamMembers: any): any[] => {
+        if (!teamMembers) return [];
+        if (Array.isArray(teamMembers)) return teamMembers;
+        if (typeof teamMembers === 'string') {
+            try {
+                const parsed = JSON.parse(teamMembers);
+                return Array.isArray(parsed) ? parsed : [];
+            } catch {
+                return [];
+            }
+        }
+        return [];
+    };
+
+    // Calculate refund amounts based on entry fee
+    const getRefundAmount = (uid: string): number => {
+        const refundType = refunds[uid];
+        if (!refundType || refundType === 'none' || !match) return 0;
+        const entryFee = match.entryFee || 0;
+        // Get team size for this participant
+        const participant = participants.find(p => p.uid === uid);
+        const teamMembers = safeParseTeamMembers(participant?.teamMembers);
+        const teamSize = teamMembers.length || 1;
+        const fullRefund = entryFee * teamSize;
+        return refundType === 'full' ? fullRefund : Math.floor(fullRefund / 2);
+    };
+
+    const totalRefunds = Object.keys(refunds).reduce((acc, uid) => acc + getRefundAmount(uid), 0);
+    const getRefundList = () => {
+        return Object.entries(refunds)
+            .filter(([_, type]) => type && type !== 'none')
+            .map(([uid, _]) => ({ uid, amount: getRefundAmount(uid) }))
+            .filter(r => r.amount > 0);
+    };
+    const refundList = getRefundList();
+
     // Filter participants based on search and winner filter
     const filteredParticipants = useMemo(() => {
         let filtered = participants;
@@ -214,6 +257,7 @@ export default function DistributePrizes() {
         const currentStats = stats[player.uid] || { rank: '', kills: '' };
         setTempRank(currentStats.rank);
         setTempKills(currentStats.kills);
+        setTempRefundType(refunds[player.uid] || 'none');
         setModalVisible(true);
 
         Animated.parallel([
@@ -248,6 +292,7 @@ export default function DistributePrizes() {
             setSelectedPlayer(null);
             setTempRank('');
             setTempKills('');
+            setTempRefundType('none');
         });
     };
 
@@ -281,19 +326,36 @@ export default function DistributePrizes() {
             }
         }
 
-        setStats(prev => ({
-            ...prev,
-            [selectedPlayer.uid]: {
-                rank: tempRank,
-                kills: tempKills,
-            }
-        }));
+        // If refund is set, clear prize and stats (no prize for refunded players)
+        if (tempRefundType !== 'none') {
+            setRefunds(prev => ({ ...prev, [selectedPlayer.uid]: tempRefundType }));
+            setAmounts(prev => ({ ...prev, [selectedPlayer.uid]: '0' }));
+            setStats(prev => ({
+                ...prev,
+                [selectedPlayer.uid]: { rank: '0', kills: '0' }
+            }));
+        } else {
+            // Clear any existing refund
+            setRefunds(prev => {
+                const newRefunds = { ...prev };
+                delete newRefunds[selectedPlayer.uid];
+                return newRefunds;
+            });
+            setStats(prev => ({
+                ...prev,
+                [selectedPlayer.uid]: {
+                    rank: tempRank,
+                    kills: tempKills,
+                }
+            }));
+        }
         closeModal();
     };
 
     const handleModalReset = () => {
         setTempRank('');
         setTempKills('');
+        setTempRefundType('none');
     };
 
     const handleEqualShareToggle = () => {
@@ -362,53 +424,149 @@ export default function DistributePrizes() {
         }
     };
 
+    const sendRefundNotifications = async (refundsData: { uid: string; amount: number }[]) => {
+        try {
+            for (const refund of refundsData) {
+                const playerData = participants.find(p => p.uid === refund.uid);
+                const playerName = playerData?.username || 'Player';
+
+                await notificationApi.sendNotification({
+                    title: '💰 Refund Processed!',
+                    body: `Hey ${playerName}! You've received a refund of ৳${refund.amount} for the match "${match?.title || 'Match'}". The amount has been added to your wallet.`,
+                    data: { screen: 'wallet', amount: refund.amount },
+                    targetType: 'specific',
+                    userIds: [refund.uid],
+                    skipSave: true,
+                });
+            }
+        } catch (error) {
+            console.error('Failed to send refund notifications:', error);
+        }
+    };
+
+    const handleCloseMatch = async () => {
+        showAlert({
+            title: 'Close Match',
+            message: 'Are you sure you want to close this match? This will mark the match as completed and notify all participants.',
+            type: 'confirm',
+            onConfirm: async () => {
+                try {
+                    setClosingMatch(true);
+
+                    // Close the match
+                    await matchApi.changeAdminStatus(id as string, 'closed');
+
+                    // Notify all participants
+                    const participantIds = participants.map(p => p.uid);
+                    if (participantIds.length > 0) {
+                        await notificationApi.sendNotification({
+                            title: '🏁 Match Completed!',
+                            body: `The match "${match?.title || 'Match'}" has been completed! Check your wallet for prizes or refunds.`,
+                            data: { screen: 'matches' },
+                            targetType: 'specific',
+                            userIds: participantIds,
+                            skipSave: true,
+                        });
+                    }
+
+                    showAlert({
+                        title: 'Match Closed',
+                        message: 'Match has been closed and all participants have been notified!',
+                        type: 'success',
+                        onConfirm: () => router.back()
+                    });
+                } catch (error) {
+                    console.error('Close match error:', error);
+                    showAlert({ title: 'Error', message: 'Failed to close match', type: 'error' });
+                } finally {
+                    setClosingMatch(false);
+                }
+            }
+        });
+    };
+
     const handleDistribute = async () => {
-        if (winners.length === 0) {
-            showAlert({ title: 'Required', message: 'Please enter prize amounts for at least one winner.', type: 'warning' });
+        const hasWinners = winners.length > 0;
+        const hasRefunds = refundList.length > 0;
+
+        if (!hasWinners && !hasRefunds) {
+            showAlert({ title: 'Required', message: 'Please select winners or refunds for at least one player.', type: 'warning' });
             return;
         }
 
+        // Build confirmation message
+        let confirmMessage = '';
+        if (hasWinners && hasRefunds) {
+            confirmMessage = `You are about to distribute ৳${totalPrize} to ${winners.length} winners and refund ৳${totalRefunds} to ${refundList.length} players.`;
+        } else if (hasWinners) {
+            confirmMessage = `You are about to distribute ৳${totalPrize} to ${winners.length} winners.`;
+        } else {
+            confirmMessage = `You are about to refund ৳${totalRefunds} to ${refundList.length} players.`;
+        }
+        confirmMessage += ' This action cannot be reversed.';
+
         showAlert({
-            title: 'Confirm Payout',
-            message: `You are about to distribute ৳${totalPrize} to ${winners.length} winners. This action cannot be reversed.`,
+            title: 'Confirm Distribution',
+            message: confirmMessage,
             type: 'confirm',
             onConfirm: async () => {
                 try {
                     setDistributing(true);
 
-                    await matchApi.distributePrizes({ matchId: id as string, winners });
+                    // Process prizes if any
+                    if (hasWinners) {
+                        await matchApi.distributePrizes({ matchId: id as string, winners });
 
-                    if (rule && rule.id) {
-                        const historyLog = {
-                            match_id: id,
-                            rule_id: rule.id,
-                            title: match?.title || 'Unknown Match',
-                            completed_at: new Date().toISOString(),
-                            winners: winners.map(w => ({
-                                uid: w.uid,
-                                amount: w.amount,
-                                breakdown: 'Distributed via Admin',
-                                username: participants.find(p => p.uid === w.uid)?.username || 'Unknown'
-                            }))
-                        };
-                        try {
-                            await historyApi.logMatch(historyLog);
-                        } catch (e) {
-                            console.error('Failed to log history', e);
+                        if (rule && rule.id) {
+                            const historyLog = {
+                                match_id: id,
+                                rule_id: rule.id,
+                                title: match?.title || 'Unknown Match',
+                                completed_at: new Date().toISOString(),
+                                winners: winners.map(w => ({
+                                    uid: w.uid,
+                                    amount: w.amount,
+                                    breakdown: 'Distributed via Admin',
+                                    username: participants.find(p => p.uid === w.uid)?.username || 'Unknown'
+                                }))
+                            };
+                            try {
+                                await historyApi.logMatch(historyLog);
+                            } catch (e) {
+                                console.error('Failed to log history', e);
+                            }
                         }
+
+                        await sendPrizeNotifications(winners);
                     }
 
-                    await sendPrizeNotifications(winners);
+                    // Process refunds if any
+                    if (hasRefunds) {
+                        await matchApi.refundParticipants({ matchId: id as string, refunds: refundList });
+                        await sendRefundNotifications(refundList);
+                    }
+
+                    // Build success message
+                    let successMessage = '';
+                    if (hasWinners && hasRefunds) {
+                        successMessage = 'Prizes distributed and refunds processed successfully!';
+                    } else if (hasWinners) {
+                        successMessage = 'Prizes distributed successfully! Winners have been notified.';
+                    } else {
+                        successMessage = 'Refunds processed successfully! Players have been notified.';
+                    }
+
+                    // Mark distribution as complete
+                    setDistributionComplete(true);
 
                     showAlert({
                         title: 'Success',
-                        message: 'Prizes distributed successfully! Winners have been notified.',
+                        message: successMessage + ' You can now close the match.',
                         type: 'success',
-                        onConfirm: () => router.back()
                     });
                 } catch (error) {
                     console.error('Distribute error', error);
-                    showAlert({ title: 'Error', message: 'Failed to distribute prizes', type: 'error' });
+                    showAlert({ title: 'Error', message: 'Failed to process distribution', type: 'error' });
                 } finally {
                     setDistributing(false);
                 }
@@ -796,10 +954,99 @@ export default function DistributePrizes() {
                                 </View>
                             )}
 
+                            {/* Refund Options Section */}
+                            <View style={styles.modalInputSection}>
+                                <Text style={styles.modalSectionTitle}>💰 Refund Options</Text>
+                                <Text style={[styles.modalInputLabel, { marginBottom: 12, color: THEME.muted }]}>
+                                    If refund is selected, player will not receive prize money
+                                </Text>
+
+                                {(() => {
+                                    const entryFee = match?.entryFee || 0;
+                                    const participant = participants.find(p => p.uid === selectedPlayer?.uid);
+                                    const teamMembers = safeParseTeamMembers(participant?.teamMembers);
+                                    const teamSize = teamMembers.length || 1;
+                                    const fullRefundAmount = entryFee * teamSize;
+                                    const halfRefundAmount = Math.floor(fullRefundAmount / 2);
+
+                                    return (
+                                        <View style={styles.refundOptionsContainer}>
+                                            <TouchableOpacity
+                                                style={[
+                                                    styles.refundOption,
+                                                    tempRefundType === 'none' && styles.refundOptionActive
+                                                ]}
+                                                onPress={() => setTempRefundType('none')}
+                                            >
+                                                <Ionicons
+                                                    name={tempRefundType === 'none' ? "radio-button-on" : "radio-button-off"}
+                                                    size={20}
+                                                    color={tempRefundType === 'none' ? THEME.accent : THEME.muted}
+                                                />
+                                                <Text style={[
+                                                    styles.refundOptionText,
+                                                    tempRefundType === 'none' && styles.refundOptionTextActive
+                                                ]}>No Refund</Text>
+                                            </TouchableOpacity>
+
+                                            <TouchableOpacity
+                                                style={[
+                                                    styles.refundOption,
+                                                    tempRefundType === 'half' && styles.refundOptionActive
+                                                ]}
+                                                onPress={() => setTempRefundType('half')}
+                                            >
+                                                <Ionicons
+                                                    name={tempRefundType === 'half' ? "radio-button-on" : "radio-button-off"}
+                                                    size={20}
+                                                    color={tempRefundType === 'half' ? THEME.gold : THEME.muted}
+                                                />
+                                                <Text style={[
+                                                    styles.refundOptionText,
+                                                    tempRefundType === 'half' && { color: THEME.gold }
+                                                ]}>Half Refund (৳{halfRefundAmount})</Text>
+                                            </TouchableOpacity>
+
+                                            <TouchableOpacity
+                                                style={[
+                                                    styles.refundOption,
+                                                    tempRefundType === 'full' && styles.refundOptionActive
+                                                ]}
+                                                onPress={() => setTempRefundType('full')}
+                                            >
+                                                <Ionicons
+                                                    name={tempRefundType === 'full' ? "radio-button-on" : "radio-button-off"}
+                                                    size={20}
+                                                    color={tempRefundType === 'full' ? THEME.rose : THEME.muted}
+                                                />
+                                                <Text style={[
+                                                    styles.refundOptionText,
+                                                    tempRefundType === 'full' && { color: THEME.rose }
+                                                ]}>Full Refund (৳{fullRefundAmount})</Text>
+                                            </TouchableOpacity>
+                                        </View>
+                                    );
+                                })()}
+                            </View>
+
                             {/* Prize Preview */}
                             <View style={styles.modalPrizePreview}>
-                                <Text style={styles.modalPrizeLabel}>Calculated Prize</Text>
-                                <Text style={styles.modalPrizeValue}>৳{getModalPrizePreview()}</Text>
+                                <Text style={styles.modalPrizeLabel}>
+                                    {tempRefundType !== 'none' ? 'Refund Amount' : 'Calculated Prize'}
+                                </Text>
+                                <Text style={[
+                                    styles.modalPrizeValue,
+                                    tempRefundType !== 'none' && { color: tempRefundType === 'full' ? THEME.rose : THEME.gold }
+                                ]}>
+                                    {tempRefundType !== 'none' ? (() => {
+                                        const entryFee = match?.entryFee || 0;
+                                        const participant = participants.find(p => p.uid === selectedPlayer?.uid);
+                                        const teamMembers = safeParseTeamMembers(participant?.teamMembers);
+                                        const teamSize = teamMembers.length || 1;
+                                        const fullRefund = entryFee * teamSize;
+                                        return `৳${tempRefundType === 'full' ? fullRefund : Math.floor(fullRefund / 2)}`;
+                                    })() : `৳${getModalPrizePreview()}`}
+                                </Text>
                             </View>
 
                             {/* Action Buttons */}
@@ -835,60 +1082,122 @@ export default function DistributePrizes() {
         );
     };
 
-    const renderFooter = () => (
-        <View style={[styles.footer, { paddingBottom: insets.bottom + 10 }]}>
-            <View style={styles.footerContent}>
-                {/* Summary Stats */}
-                <View style={styles.summaryCards}>
-                    <View style={styles.summaryCard}>
-                        <View style={styles.summaryIconWrap}>
-                            <Ionicons name="people" size={18} color={THEME.purple} />
-                        </View>
-                        <View>
-                            <Text style={styles.summaryValue}>{winners.length}</Text>
-                            <Text style={styles.summaryLabel}>Winners</Text>
-                        </View>
-                    </View>
+    const renderFooter = () => {
+        const hasWinnersOrRefunds = winners.length > 0 || refundList.length > 0;
+        const totalDistribution = totalPrize + totalRefunds;
+        const prizePool = match?.prizePool || 0;
+        const isOverBudget = totalDistribution > prizePool && prizePool > 0;
 
-                    <View style={[styles.summaryCard, styles.summaryCardHighlight]}>
-                        <View style={[styles.summaryIconWrap, { backgroundColor: 'rgba(245, 158, 11, 0.15)' }]}>
-                            <Ionicons name="cash" size={18} color={THEME.gold} />
+        return (
+            <View style={[styles.footer, { paddingBottom: insets.bottom + 10 }]}>
+                <View style={styles.footerContent}>
+                    {/* Summary Stats */}
+                    <View style={styles.summaryCards}>
+                        <View style={styles.summaryCard}>
+                            <View style={styles.summaryIconWrap}>
+                                <Ionicons name="people" size={18} color={THEME.purple} />
+                            </View>
+                            <View>
+                                <Text style={styles.summaryValue}>{winners.length}</Text>
+                                <Text style={styles.summaryLabel}>Winners</Text>
+                            </View>
                         </View>
-                        <View>
-                            <Text style={[styles.summaryValue, { color: THEME.gold }]}>৳{totalPrize}</Text>
-                            <Text style={styles.summaryLabel}>Total Payout</Text>
-                        </View>
-                    </View>
-                </View>
 
-                {/* Distribute Button */}
-                <TouchableOpacity
-                    style={[styles.distributeBtn, (distributing || winners.length === 0) && styles.distributeBtnDisabled]}
-                    onPress={handleDistribute}
-                    disabled={distributing || winners.length === 0}
-                    activeOpacity={0.8}
-                >
-                    <LinearGradient
-                        colors={winners.length > 0 ? [THEME.accent, '#059669'] : ['#94a3b8', '#64748b']}
-                        style={styles.distributeBtnGradient}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 0 }}
-                    >
-                        {distributing ? (
-                            <ActivityIndicator color={COLORS.white} />
-                        ) : (
-                            <>
-                                <Ionicons name="gift" size={22} color={COLORS.white} />
-                                <Text style={styles.distributeBtnText}>
-                                    {winners.length > 0 ? 'Release Prizes' : 'No Winners Selected'}
-                                </Text>
-                            </>
+                        <View style={[styles.summaryCard, styles.summaryCardHighlight]}>
+                            <View style={[styles.summaryIconWrap, { backgroundColor: 'rgba(245, 158, 11, 0.15)' }]}>
+                                <Ionicons name="cash" size={18} color={THEME.gold} />
+                            </View>
+                            <View>
+                                <Text style={[styles.summaryValue, { color: THEME.gold }]}>৳{totalPrize}</Text>
+                                <Text style={styles.summaryLabel}>Prizes</Text>
+                            </View>
+                        </View>
+
+                        {refundList.length > 0 && (
+                            <View style={styles.summaryCard}>
+                                <View style={[styles.summaryIconWrap, { backgroundColor: 'rgba(244, 63, 94, 0.15)' }]}>
+                                    <Ionicons name="arrow-undo" size={18} color={THEME.rose} />
+                                </View>
+                                <View>
+                                    <Text style={[styles.summaryValue, { color: THEME.rose }]}>৳{totalRefunds}</Text>
+                                    <Text style={styles.summaryLabel}>Refunds ({refundList.length})</Text>
+                                </View>
+                            </View>
                         )}
-                    </LinearGradient>
-                </TouchableOpacity>
+                    </View>
+
+                    {/* Over budget warning */}
+                    {isOverBudget && (
+                        <View style={styles.warningBanner}>
+                            <Ionicons name="warning" size={16} color={THEME.rose} />
+                            <Text style={styles.warningText}>
+                                Total (৳{totalDistribution}) exceeds prize pool (৳{prizePool})
+                            </Text>
+                        </View>
+                    )}
+
+                    {/* Distribute Button or Close Match Button */}
+                    {distributionComplete ? (
+                        <TouchableOpacity
+                            style={styles.distributeBtn}
+                            onPress={handleCloseMatch}
+                            disabled={closingMatch}
+                            activeOpacity={0.8}
+                        >
+                            <LinearGradient
+                                colors={['#f43f5e', '#dc2626']}
+                                style={styles.distributeBtnGradient}
+                                start={{ x: 0, y: 0 }}
+                                end={{ x: 1, y: 0 }}
+                            >
+                                {closingMatch ? (
+                                    <ActivityIndicator color={COLORS.white} />
+                                ) : (
+                                    <>
+                                        <Ionicons name="lock-closed" size={22} color={COLORS.white} />
+                                        <Text style={styles.distributeBtnText}>Close Match</Text>
+                                    </>
+                                )}
+                            </LinearGradient>
+                        </TouchableOpacity>
+                    ) : (
+                        <TouchableOpacity
+                            style={[styles.distributeBtn, (!hasWinnersOrRefunds || distributing || isOverBudget) && styles.distributeBtnDisabled]}
+                            onPress={handleDistribute}
+                            disabled={distributing || !hasWinnersOrRefunds || isOverBudget}
+                            activeOpacity={0.8}
+                        >
+                            <LinearGradient
+                                colors={hasWinnersOrRefunds && !isOverBudget ? [THEME.accent, '#059669'] : ['#94a3b8', '#64748b']}
+                                style={styles.distributeBtnGradient}
+                                start={{ x: 0, y: 0 }}
+                                end={{ x: 1, y: 0 }}
+                            >
+                                {distributing ? (
+                                    <ActivityIndicator color={COLORS.white} />
+                                ) : (
+                                    <>
+                                        <Ionicons name="gift" size={22} color={COLORS.white} />
+                                        <Text style={styles.distributeBtnText}>
+                                            {!hasWinnersOrRefunds
+                                                ? 'No Winners or Refunds'
+                                                : isOverBudget
+                                                    ? 'Over Budget'
+                                                    : refundList.length > 0 && winners.length > 0
+                                                        ? 'Distribute All'
+                                                        : refundList.length > 0
+                                                            ? 'Process Refunds'
+                                                            : 'Release Prizes'}
+                                        </Text>
+                                    </>
+                                )}
+                            </LinearGradient>
+                        </TouchableOpacity>
+                    )}
+                </View>
             </View>
-        </View>
-    );
+        );
+    };
 
     if (loading) {
         return (
@@ -1645,5 +1954,52 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontFamily: FONTS.bold,
         color: COLORS.white,
+    },
+
+    // Refund options styles
+    refundOptionsContainer: {
+        gap: 8,
+    },
+    refundOption: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        paddingVertical: 12,
+        paddingHorizontal: 14,
+        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.1)',
+    },
+    refundOptionActive: {
+        borderColor: THEME.accent,
+        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+    },
+    refundOptionText: {
+        fontSize: 14,
+        fontFamily: FONTS.medium,
+        color: COLORS.white,
+    },
+    refundOptionTextActive: {
+        color: THEME.accent,
+    },
+
+    // Warning banner styles
+    warningBanner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        backgroundColor: 'rgba(244, 63, 94, 0.1)',
+        borderRadius: 10,
+        padding: 12,
+        marginBottom: 12,
+        borderWidth: 1,
+        borderColor: THEME.rose,
+    },
+    warningText: {
+        fontSize: 12,
+        fontFamily: FONTS.medium,
+        color: THEME.rose,
+        flex: 1,
     },
 });

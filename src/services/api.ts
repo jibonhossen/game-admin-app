@@ -1,7 +1,6 @@
 import axios from 'axios';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Template Types
+// Template Types (client-side uses camelCase)
 export interface MatchTemplate {
     id: string;
     name: string;
@@ -17,17 +16,65 @@ export interface MatchTemplate {
     prizeDetails: string;
 }
 
-const TEMPLATES_STORAGE_KEY = '@match_templates';
+// Server template type (snake_case)
+interface ServerMatchTemplate {
+    id: string;
+    name: string;
+    created_at: string;
+    title: string;
+    match_type: 'Solo' | 'Duo' | 'Squad';
+    category: string;
+    map: string;
+    entry_fee: number;
+    prize_pool: number;
+    per_kill: number;
+    total_slots: number;
+    prize_details: string;
+}
 
-// Template API (Local Storage)
+// Convert server template to client format
+const toClientTemplate = (t: ServerMatchTemplate): MatchTemplate => ({
+    id: t.id,
+    name: t.name,
+    createdAt: t.created_at,
+    title: t.title,
+    matchType: t.match_type,
+    category: t.category,
+    map: t.map,
+    entryFee: t.entry_fee,
+    prizePool: t.prize_pool,
+    perKill: t.per_kill,
+    totalSlots: t.total_slots,
+    prizeDetails: t.prize_details,
+});
+
+// Convert client template to server format
+const toServerTemplate = (t: Omit<MatchTemplate, 'id' | 'createdAt'>): Omit<ServerMatchTemplate, 'id' | 'created_at'> => ({
+    name: t.name,
+    title: t.title,
+    match_type: t.matchType,
+    category: t.category,
+    map: t.map,
+    entry_fee: t.entryFee,
+    prize_pool: t.prizePool,
+    per_kill: t.perKill,
+    total_slots: t.totalSlots,
+    prize_details: t.prizeDetails,
+});
+
+// Prize History Service (EC2) - defined early for templateApi
+const HISTORY_URL = process.env.EXPO_PUBLIC_PRIZE_API;
+const historyAxios = axios.create({
+    baseURL: HISTORY_URL,
+    headers: { 'Content-Type': 'application/json' },
+});
+
+// Template API (Server-side)
 export const templateApi = {
     getAll: async (): Promise<MatchTemplate[]> => {
         try {
-            const data = await AsyncStorage.getItem(TEMPLATES_STORAGE_KEY);
-            console.log('Raw templates data from AsyncStorage:', data);
-            const templates = data ? JSON.parse(data) : [];
-            console.log('Parsed templates count:', templates.length);
-            return templates;
+            const response = await historyAxios.get('/api/templates');
+            return response.data.map(toClientTemplate);
         } catch (error) {
             console.error('Failed to get templates:', error);
             return [];
@@ -35,50 +82,40 @@ export const templateApi = {
     },
 
     create: async (template: Omit<MatchTemplate, 'id' | 'createdAt'>): Promise<MatchTemplate> => {
-        try {
-            const templates = await templateApi.getAll();
-            const newTemplate: MatchTemplate = {
-                ...template,
-                id: `template_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-                createdAt: new Date().toISOString(),
-            };
-            templates.push(newTemplate);
-            await AsyncStorage.setItem(TEMPLATES_STORAGE_KEY, JSON.stringify(templates));
-            console.log('Template saved successfully:', newTemplate.name);
-            return newTemplate;
-        } catch (error) {
-            console.error('Failed to create template:', error);
-            throw error;
-        }
+        const serverTemplate = toServerTemplate(template);
+        const response = await historyAxios.post('/api/templates', serverTemplate);
+        console.log('Template saved successfully:', template.name);
+        return toClientTemplate(response.data);
     },
 
     update: async (id: string, updates: Partial<MatchTemplate>): Promise<MatchTemplate | null> => {
         try {
-            const templates = await templateApi.getAll();
-            const index = templates.findIndex(t => t.id === id);
-            if (index === -1) return null;
+            // Convert only the fields that are being updated
+            const serverUpdates: any = {};
+            if (updates.name !== undefined) serverUpdates.name = updates.name;
+            if (updates.title !== undefined) serverUpdates.title = updates.title;
+            if (updates.matchType !== undefined) serverUpdates.match_type = updates.matchType;
+            if (updates.category !== undefined) serverUpdates.category = updates.category;
+            if (updates.map !== undefined) serverUpdates.map = updates.map;
+            if (updates.entryFee !== undefined) serverUpdates.entry_fee = updates.entryFee;
+            if (updates.prizePool !== undefined) serverUpdates.prize_pool = updates.prizePool;
+            if (updates.perKill !== undefined) serverUpdates.per_kill = updates.perKill;
+            if (updates.totalSlots !== undefined) serverUpdates.total_slots = updates.totalSlots;
+            if (updates.prizeDetails !== undefined) serverUpdates.prize_details = updates.prizeDetails;
 
-            templates[index] = { ...templates[index], ...updates };
-            await AsyncStorage.setItem(TEMPLATES_STORAGE_KEY, JSON.stringify(templates));
-            console.log('Template updated successfully:', templates[index].name);
-            return templates[index];
+            const response = await historyAxios.put(`/api/templates/${id}`, serverUpdates);
+            console.log('Template updated successfully:', response.data.name);
+            return toClientTemplate(response.data);
         } catch (error) {
             console.error('Failed to update template:', error);
-            throw error;
+            return null;
         }
     },
 
     delete: async (id: string): Promise<boolean> => {
-        try {
-            const templates = await templateApi.getAll();
-            const filtered = templates.filter(t => t.id !== id);
-            await AsyncStorage.setItem(TEMPLATES_STORAGE_KEY, JSON.stringify(filtered));
-            console.log('Template deleted successfully:', id);
-            return true;
-        } catch (error) {
-            console.error('Failed to delete template:', error);
-            throw error;
-        }
+        await historyAxios.delete(`/api/templates/${id}`);
+        console.log('Template deleted successfully:', id);
+        return true;
     },
 };
 
@@ -154,6 +191,10 @@ export const matchApi = {
     },
     deleteMatch: async (id: string) => {
         const response = await matchAxios.delete(`/match/admin/delete/${id}`);
+        return response.data;
+    },
+    refundParticipants: async (data: { matchId: string; refunds: { uid: string; amount: number }[] }) => {
+        const response = await matchAxios.post('/match/admin/refund', data);
         return response.data;
     },
 };
@@ -238,12 +279,8 @@ export const userApi = {
     },
 };
 
-// Prize History Service (EC2)
-const HISTORY_URL = process.env.EXPO_PUBLIC_PRIZE_API || 'http://localhost:3001'; // Fallback to local
-const historyAxios = axios.create({
-    baseURL: HISTORY_URL,
-    headers: { 'Content-Type': 'application/json' },
-});
+
+// historyApi uses historyAxios defined above
 
 export const historyApi = {
     getRules: async () => {

@@ -34,6 +34,58 @@ export default function MatchDetails() {
     const isCompleted = match?.status === 'Completed';
     const isClosed = match?.adminStatus === 'closed';
 
+    // Countdown timer state
+    const [timeLeft, setTimeLeft] = useState({ hours: '00', minutes: '00', seconds: '00', expired: false });
+
+    // Calculate time left for countdown
+    const calculateTimeLeft = useCallback(() => {
+        try {
+            if (!match?.scheduleDate || !match?.scheduleTime) return { hours: '00', minutes: '00', seconds: '00', expired: true };
+
+            const monthMap: { [key: string]: number } = {
+                'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5,
+                'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11
+            };
+            const [day, monthStr, year] = match.scheduleDate.split(' ');
+            const [time, modifier] = match.scheduleTime.split(' ');
+            let [hours, minutes] = time.split(':').map(Number);
+            if (modifier === 'PM' && hours < 12) hours += 12;
+            if (modifier === 'AM' && hours === 12) hours = 0;
+
+            const matchDateTime = new Date(parseInt(year), monthMap[monthStr], parseInt(day), hours, minutes, 0);
+            const now = new Date();
+            const diff = matchDateTime.getTime() - now.getTime();
+
+            if (diff > 0) {
+                const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+                const h = Math.floor((diff / (1000 * 60 * 60)) % 24);
+                const m = Math.floor((diff / 1000 / 60) % 60);
+                const s = Math.floor((diff / 1000) % 60);
+                const totalHours = days * 24 + h;
+
+                return {
+                    hours: totalHours < 10 ? `0${totalHours}` : `${totalHours}`,
+                    minutes: m < 10 ? `0${m}` : `${m}`,
+                    seconds: s < 10 ? `0${s}` : `${s}`,
+                    expired: false
+                };
+            }
+        } catch {
+            // Parse error
+        }
+        return { hours: '00', minutes: '00', seconds: '00', expired: true };
+    }, [match?.scheduleDate, match?.scheduleTime]);
+
+    // Update countdown every second
+    useEffect(() => {
+        if (!match) return;
+        setTimeLeft(calculateTimeLeft());
+        const timer = setInterval(() => {
+            setTimeLeft(calculateTimeLeft());
+        }, 1000);
+        return () => clearInterval(timer);
+    }, [match, calculateTimeLeft]);
+
     useFocusEffect(
         useCallback(() => {
             fetchData();
@@ -326,6 +378,36 @@ export default function MatchDetails() {
                     <Text style={styles.matchTitle}>{match.title}</Text>
                     <Text style={styles.matchNo}>MATCH NO: #{match.matchNo}</Text>
                 </View>
+
+                {/* Countdown Timer Section */}
+                {!isCompleted && !isClosed && (
+                    <View style={styles.countdownSection}>
+                        <View style={styles.countdownHeader}>
+                            <Ionicons name={timeLeft.expired ? "alert-circle" : "timer-outline"} size={20} color="#fff" />
+                            <Text style={styles.countdownLabel}>
+                                {timeLeft.expired ? 'MATCH STARTED' : 'STARTS IN'}
+                            </Text>
+                        </View>
+                        {!timeLeft.expired && (
+                            <View style={styles.countdownBoxes}>
+                                <View style={styles.countdownBox}>
+                                    <Text style={styles.countdownValue}>{timeLeft.hours}</Text>
+                                    <Text style={styles.countdownUnit}>HRS</Text>
+                                </View>
+                                <Text style={styles.countdownSep}>:</Text>
+                                <View style={styles.countdownBox}>
+                                    <Text style={styles.countdownValue}>{timeLeft.minutes}</Text>
+                                    <Text style={styles.countdownUnit}>MIN</Text>
+                                </View>
+                                <Text style={styles.countdownSep}>:</Text>
+                                <View style={styles.countdownBox}>
+                                    <Text style={styles.countdownValue}>{timeLeft.seconds}</Text>
+                                    <Text style={styles.countdownUnit}>SEC</Text>
+                                </View>
+                            </View>
+                        )}
+                    </View>
+                )}
 
                 {/* Info Grid */}
                 <View style={[styles.card, styles.infoGrid]}>
@@ -774,6 +856,56 @@ const styles = StyleSheet.create({
         fontFamily: 'Poppins_600SemiBold',
         color: COLORS.textSecondary,
         letterSpacing: 1,
+    },
+    countdownSection: {
+        backgroundColor: '#1e3a5f',
+        marginHorizontal: 20,
+        marginTop: 16,
+        borderRadius: 16,
+        padding: 16,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    countdownHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    countdownLabel: {
+        color: '#fff',
+        fontSize: 14,
+        fontFamily: 'Poppins_700Bold',
+        letterSpacing: 1,
+    },
+    countdownBoxes: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    countdownBox: {
+        backgroundColor: '#0f766e',
+        paddingHorizontal: 14,
+        paddingVertical: 8,
+        borderRadius: 10,
+        alignItems: 'center',
+        minWidth: 56,
+    },
+    countdownValue: {
+        fontSize: 22,
+        fontFamily: 'Poppins_700Bold',
+        color: '#fff',
+    },
+    countdownUnit: {
+        fontSize: 10,
+        fontFamily: 'Poppins_600SemiBold',
+        color: 'rgba(255,255,255,0.7)',
+        marginTop: -2,
+    },
+    countdownSep: {
+        fontSize: 22,
+        fontFamily: 'Poppins_700Bold',
+        color: '#fff',
     },
     card: {
         backgroundColor: COLORS.white,

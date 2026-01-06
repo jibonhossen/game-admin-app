@@ -14,12 +14,9 @@ export default function CreateRule() {
     const [creating, setCreating] = useState(false);
 
     // Config States
-    const [totalPrize, setTotalPrize] = useState(''); // equal_share
     const [perKill, setPerKill] = useState(''); // rank_kill
     // Rank Rewards: "1:500, 2:300" -> Parsed to object
     const [rankRewardsInput, setRankRewardsInput] = useState<{ rank: string, amount: string }[]>([{ rank: '1', amount: '' }]);
-    // Fixed List: "500, 300, 200" -> Parsed to array
-    const [fixedPrizesInput, setFixedPrizesInput] = useState<string[]>(['']);
 
     const handleAddRankRow = () => {
         setRankRewardsInput([...rankRewardsInput, { rank: (rankRewardsInput.length + 1).toString(), amount: '' }]);
@@ -37,61 +34,23 @@ export default function CreateRule() {
         setRankRewardsInput(newRows);
     };
 
-    const handleAddFixedRow = () => {
-        setFixedPrizesInput([...fixedPrizesInput, '']);
-    };
-
-    const handleUpdateFixedRow = (index: number, value: string) => {
-        const newRows = [...fixedPrizesInput];
-        newRows[index] = value;
-        setFixedPrizesInput(newRows);
-    };
-
-    const handleRemoveFixedRow = (index: number) => {
-        const newRows = [...fixedPrizesInput];
-        newRows.splice(index, 1);
-        setFixedPrizesInput(newRows);
-    };
-
     const handleCreate = async () => {
         if (!name.trim()) {
             Alert.alert('Error', 'Please enter a rule name');
             return;
         }
 
-        let config: any = {};
-
-        if (type === 'equal_share') {
-            if (!totalPrize || isNaN(Number(totalPrize))) {
-                Alert.alert('Error', 'Please enter a valid Total Prize amount');
-                return;
-            }
-            config = { total_prize: Number(totalPrize) };
-
-        } else if (type === 'rank_kill') {
-            if (!perKill || isNaN(Number(perKill))) {
-                Alert.alert('Error', 'Please enter a valid Per Kill amount');
-                return;
-            }
-            const rewards: Record<string, number> = {};
-            for (const row of rankRewardsInput) {
-                if (row.rank && row.amount) {
-                    rewards[row.rank] = Number(row.amount);
-                }
-            }
-            config = { per_kill: Number(perKill), rank_rewards: rewards };
-
-        } else if (type === 'fixed_list') {
-            const prizes = fixedPrizesInput
-                .map(p => Number(p))
-                .filter(p => !isNaN(p) && p > 0);
-
-            if (prizes.length === 0) {
-                Alert.alert('Error', 'Please add at least one fixed prize');
-                return;
-            }
-            config = { prizes };
+        if (!perKill || isNaN(Number(perKill))) {
+            Alert.alert('Error', 'Please enter a valid Per Kill amount');
+            return;
         }
+        const rewards: Record<string, number> = {};
+        for (const row of rankRewardsInput) {
+            if (row.rank && row.amount) {
+                rewards[row.rank] = Number(row.amount);
+            }
+        }
+        const config = { per_kill: Number(perKill), rank_rewards: rewards };
 
         try {
             setCreating(true);
@@ -136,124 +95,59 @@ export default function CreateRule() {
                     />
                 </View>
 
-                {/* Type Selection */}
-                <View style={styles.group}>
-                    <Text style={styles.label}>Rule Type</Text>
-                    <View style={styles.typeGrid}>
-                        <TypeOption
-                            selected={type === 'rank_kill'}
-                            label="Rank + Kill"
-                            icon="trophy"
-                            onPress={() => setType('rank_kill')}
-                        />
-                        <TypeOption
-                            selected={type === 'equal_share'}
-                            label="Equal Share"
-                            icon="people"
-                            onPress={() => setType('equal_share')}
-                        />
-                        <TypeOption
-                            selected={type === 'fixed_list'}
-                            label="Fixed List"
-                            icon="list"
-                            onPress={() => setType('fixed_list')}
-                        />
-                    </View>
-                </View>
 
-                {/* Dynamic Configuration */}
+
+                {/* Configuration */}
                 <View style={styles.configContainer}>
                     <Text style={styles.sectionTitle}>Configuration</Text>
 
-                    {type === 'equal_share' && (
+                    <View style={{ gap: 16 }}>
                         <View style={styles.group}>
-                            <Text style={styles.label}>Total Prize Pool (৳)</Text>
+                            <Text style={styles.label}>Per Kill Amount (৳)</Text>
                             <TextInput
                                 style={styles.input}
-                                placeholder="5000"
+                                placeholder="10"
                                 keyboardType="numeric"
-                                value={totalPrize}
-                                onChangeText={setTotalPrize}
+                                value={perKill}
+                                onChangeText={setPerKill}
                                 placeholderTextColor={COLORS.textSecondary}
                             />
-                            <Text style={styles.hint}>Split equally among all winners.</Text>
                         </View>
-                    )}
 
-                    {type === 'rank_kill' && (
-                        <View style={{ gap: 16 }}>
-                            <View style={styles.group}>
-                                <Text style={styles.label}>Per Kill Amount (৳)</Text>
-                                <TextInput
-                                    style={styles.input}
-                                    placeholder="10"
-                                    keyboardType="numeric"
-                                    value={perKill}
-                                    onChangeText={setPerKill}
-                                    placeholderTextColor={COLORS.textSecondary}
-                                />
-                            </View>
-
-                            <View style={styles.group}>
-                                <Text style={styles.label}>Rank Rewards</Text>
-                                {rankRewardsInput.map((row, index) => (
-                                    <View key={index} style={styles.rowInput}>
-                                        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                            <Text style={styles.miniLabel}>Rank</Text>
-                                            <TextInput
-                                                style={[styles.input, { flex: 1, textAlign: 'center' }]}
-                                                value={row.rank}
-                                                onChangeText={(t) => handleUpdateRankRow(index, 'rank', t)}
-                                                keyboardType="numeric"
-                                            />
-                                        </View>
-                                        <View style={{ flex: 1.5, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                            <Text style={styles.miniLabel}>Prize ৳</Text>
-                                            <TextInput
-                                                style={[styles.input, { flex: 1 }]}
-                                                value={row.amount}
-                                                onChangeText={(t) => handleUpdateRankRow(index, 'amount', t)}
-                                                keyboardType="numeric"
-                                                placeholder="0"
-                                            />
-                                        </View>
-                                        <TouchableOpacity onPress={() => handleRemoveRankRow(index)}>
-                                            <Ionicons name="trash-outline" size={20} color={COLORS.error} />
-                                        </TouchableOpacity>
-                                    </View>
-                                ))}
-                                <TouchableOpacity style={styles.addBtn} onPress={handleAddRankRow}>
-                                    <Ionicons name="add-circle-outline" size={20} color={COLORS.primary} />
-                                    <Text style={styles.addBtnText}>Add Rank Reward</Text>
-                                </TouchableOpacity>
-                            </View>
-                        </View>
-                    )}
-
-                    {type === 'fixed_list' && (
                         <View style={styles.group}>
-                            <Text style={styles.label}>Fixed Prizes (Top Ranks)</Text>
-                            {fixedPrizesInput.map((val, index) => (
+                            <Text style={styles.label}>Rank Rewards</Text>
+                            {rankRewardsInput.map((row, index) => (
                                 <View key={index} style={styles.rowInput}>
-                                    <Text style={[styles.miniLabel, { width: 60 }]}>Rank {index + 1}</Text>
-                                    <TextInput
-                                        style={[styles.input, { flex: 1 }]}
-                                        placeholder="Amount"
-                                        keyboardType="numeric"
-                                        value={val}
-                                        onChangeText={(t) => handleUpdateFixedRow(index, t)}
-                                    />
-                                    <TouchableOpacity onPress={() => handleRemoveFixedRow(index)}>
+                                    <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                        <Text style={styles.miniLabel}>Rank</Text>
+                                        <TextInput
+                                            style={[styles.input, { flex: 1, textAlign: 'center' }]}
+                                            value={row.rank}
+                                            onChangeText={(t) => handleUpdateRankRow(index, 'rank', t)}
+                                            keyboardType="numeric"
+                                        />
+                                    </View>
+                                    <View style={{ flex: 1.5, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                        <Text style={styles.miniLabel}>Prize ৳</Text>
+                                        <TextInput
+                                            style={[styles.input, { flex: 1 }]}
+                                            value={row.amount}
+                                            onChangeText={(t) => handleUpdateRankRow(index, 'amount', t)}
+                                            keyboardType="numeric"
+                                            placeholder="0"
+                                        />
+                                    </View>
+                                    <TouchableOpacity onPress={() => handleRemoveRankRow(index)}>
                                         <Ionicons name="trash-outline" size={20} color={COLORS.error} />
                                     </TouchableOpacity>
                                 </View>
                             ))}
-                            <TouchableOpacity style={styles.addBtn} onPress={handleAddFixedRow}>
+                            <TouchableOpacity style={styles.addBtn} onPress={handleAddRankRow}>
                                 <Ionicons name="add-circle-outline" size={20} color={COLORS.primary} />
-                                <Text style={styles.addBtnText}>Add Next Rank Prize</Text>
+                                <Text style={styles.addBtnText}>Add Rank Reward</Text>
                             </TouchableOpacity>
                         </View>
-                    )}
+                    </View>
                 </View>
 
                 <TouchableOpacity
@@ -278,16 +172,7 @@ export default function CreateRule() {
     );
 }
 
-const TypeOption = ({ selected, label, icon, onPress }: any) => (
-    <TouchableOpacity
-        style={[styles.typeOption, selected && styles.typeOptionSelected]}
-        onPress={onPress}
-        activeOpacity={0.7}
-    >
-        <Ionicons name={icon} size={20} color={selected ? COLORS.white : COLORS.textSecondary} />
-        <Text style={[styles.typeOptionText, selected && { color: COLORS.white }]}>{label}</Text>
-    </TouchableOpacity>
-);
+
 
 const styles = StyleSheet.create({
     container: {
@@ -333,31 +218,7 @@ const styles = StyleSheet.create({
         fontFamily: FONTS.medium,
         color: COLORS.text,
     },
-    typeGrid: {
-        flexDirection: 'row',
-        gap: 10,
-    },
-    typeOption: {
-        flex: 1,
-        height: 80,
-        justifyContent: 'center',
-        alignItems: 'center',
-        gap: 8,
-        backgroundColor: COLORS.white,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: COLORS.border,
-    },
-    typeOptionSelected: {
-        backgroundColor: COLORS.primary,
-        borderColor: COLORS.primary,
-    },
-    typeOptionText: {
-        fontSize: 11,
-        fontFamily: FONTS.bold,
-        color: COLORS.textSecondary,
-        textAlign: 'center',
-    },
+
     configContainer: {
         backgroundColor: COLORS.white,
         padding: 16,

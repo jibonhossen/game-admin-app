@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { COLORS, SPACING, FONTS } from '../constants/theme';
 import { useRouter } from 'expo-router';
@@ -65,12 +65,58 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, onUpdate, onDelete 
         }
     };
 
+    // Countdown timer logic (matching Game-zone pattern)
+    const getTimeLeft = () => {
+        try {
+            const monthMap: { [key: string]: number } = {
+                'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5,
+                'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11
+            };
+            const [day, monthStr, year] = match.scheduleDate.split(' ');
+            const [time, modifier] = match.scheduleTime.split(' ');
+            let [hours, minutes] = time.split(':').map(Number);
+            if (modifier === 'PM' && hours < 12) hours += 12;
+            if (modifier === 'AM' && hours === 12) hours = 0;
+
+            const matchDateTime = new Date(parseInt(year), monthMap[monthStr], parseInt(day), hours, minutes, 0);
+            const now = new Date();
+            const diff = matchDateTime.getTime() - now.getTime();
+
+            if (diff > 0) {
+                const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+                const h = Math.floor((diff / (1000 * 60 * 60)) % 24);
+                const m = Math.floor((diff / 1000 / 60) % 60);
+                const s = Math.floor((diff / 1000) % 60);
+                const totalHours = days * 24 + h;
+
+                return {
+                    hours: totalHours < 10 ? `0${totalHours}` : `${totalHours}`,
+                    minutes: m < 10 ? `0${m}` : `${m}`,
+                    seconds: s < 10 ? `0${s}` : `${s}`,
+                    expired: false
+                };
+            }
+        } catch {
+            // Parse error
+        }
+        return { hours: '00', minutes: '00', seconds: '00', expired: true };
+    };
+
+    const [timeLeft, setTimeLeft] = useState(getTimeLeft());
+
+    useEffect(() => {
+        const timer = setInterval(() => {
+            setTimeLeft(getTimeLeft());
+        }, 1000); // Update every second
+        return () => clearInterval(timer);
+    }, [match.scheduleDate, match.scheduleTime]);
+
     return (
         <TouchableOpacity onPress={handlePress} activeOpacity={0.9} style={styles.card}>
             <View style={styles.header}>
                 <View style={styles.titleSection}>
                     <Text style={styles.matchNo}>{match.matchNo}</Text>
-                    <Text style={styles.title} numberOfLines={1}>{match.title}</Text>
+                    <Text style={styles.title} numberOfLines={1}>{match.category}</Text>
                 </View>
                 <View style={styles.headerActions}>
                     <StatusBadge status={match.status} />
@@ -87,7 +133,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, onUpdate, onDelete 
             <View style={styles.infoGrid}>
                 <View style={styles.infoRow}>
                     <InfoItem icon="game-controller" value={match.matchType} color={COLORS.primary} />
-                    <InfoItem icon="map" value={match.map} color="#f59e0b" />
+                    <InfoItem icon="grid" value={match.category || 'Battle Royale'} color="#f59e0b" />
                 </View>
                 <View style={styles.infoRow}>
                     <InfoItem icon="calendar" value={match.scheduleDate} color="#3b82f6" />
@@ -102,6 +148,20 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, onUpdate, onDelete 
                         <Text style={styles.slotsJoined}>{match.joinedSlots}</Text>
                         <Text style={styles.slotsTotal}> / {match.totalSlots} Slots</Text>
                     </Text>
+                </View>
+                <View style={[styles.countdownContainer, timeLeft.expired && styles.countdownExpired]}>
+                    <Ionicons name={timeLeft.expired ? "alert-circle" : "timer-outline"} size={16} color="#fff" />
+                    {timeLeft.expired ? (
+                        <Text style={styles.countdownExpiredText}>STARTED</Text>
+                    ) : (
+                        <View style={styles.countdownRow}>
+                            <Text style={styles.countdownValue}>{timeLeft.hours}h</Text>
+                            <Text style={styles.countdownSep}>:</Text>
+                            <Text style={styles.countdownValue}>{timeLeft.minutes}m</Text>
+                            <Text style={styles.countdownSep}>:</Text>
+                            <Text style={styles.countdownValue}>{timeLeft.seconds}s</Text>
+                        </View>
+                    )}
                 </View>
                 <View style={styles.priceBadge}>
                     <Text style={styles.priceText}>৳{match.entryFee}</Text>
@@ -275,6 +335,39 @@ const styles = StyleSheet.create({
         fontSize: 15,
         fontFamily: 'Poppins_700Bold',
         color: COLORS.secondary,
+    },
+    countdownContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#1e3a5f',
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        borderRadius: 12,
+        gap: 8,
+    },
+    countdownExpired: {
+        backgroundColor: COLORS.error,
+    },
+    countdownRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    countdownValue: {
+        fontSize: 16,
+        fontFamily: 'Poppins_700Bold',
+        color: '#fff',
+    },
+    countdownSep: {
+        fontSize: 16,
+        fontFamily: 'Poppins_700Bold',
+        color: 'rgba(255,255,255,0.6)',
+        marginHorizontal: 2,
+    },
+    countdownExpiredText: {
+        fontSize: 13,
+        fontFamily: 'Poppins_700Bold',
+        color: '#fff',
+        letterSpacing: 1,
     },
     divider: {
         height: 1,

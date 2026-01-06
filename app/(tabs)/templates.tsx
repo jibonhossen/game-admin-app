@@ -92,7 +92,7 @@ export default function TemplatesScreen() {
                                     </View>
                                     <View style={styles.cardTitleContent}>
                                         <Text style={styles.templateName}>{template.name}</Text>
-                                        <Text style={styles.templateTitle}>{template.title}</Text>
+                                        <Text style={styles.templateTitle}>{template.category}</Text>
                                     </View>
                                 </View>
                                 <TouchableOpacity
@@ -109,10 +109,6 @@ export default function TemplatesScreen() {
                                 <View style={styles.detailItem}>
                                     <Text style={styles.detailLabel}>Type</Text>
                                     <Text style={styles.detailValue}>{template.matchType}</Text>
-                                </View>
-                                <View style={styles.detailItem}>
-                                    <Text style={styles.detailLabel}>Map</Text>
-                                    <Text style={styles.detailValue}>{template.map}</Text>
                                 </View>
                                 <View style={styles.detailItem}>
                                     <Text style={styles.detailLabel}>Entry</Text>
