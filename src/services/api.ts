@@ -140,6 +140,13 @@ export const matchApi = {
         const response = await matchAxios.get('/match/admin/all');
         return response.data;
     },
+    getCategories: async () => {
+        // match-worker mounts category routes at /categories (implied)
+        // Let's check match-worker/src/index.ts to be sure. 
+        // Assuming /categories/all based on category.routes.ts
+        const response = await matchAxios.get('/categories/all');
+        return response.data;
+    },
     getParticipants: async (matchId: string) => {
         const response = await matchAxios.get(`/match/admin/participants/${matchId}`);
         return response.data;

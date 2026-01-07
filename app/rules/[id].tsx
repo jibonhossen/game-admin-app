@@ -20,10 +20,8 @@ export default function EditRule() {
     const [type, setType] = useState<PrizeRuleType>('rank_kill');
 
     // Config States
-    const [totalPrize, setTotalPrize] = useState(''); // equal_share
     const [perKill, setPerKill] = useState(''); // rank_kill
     const [rankRewardsInput, setRankRewardsInput] = useState<{ rank: string, amount: string }[]>([{ rank: '1', amount: '' }]);
-    const [fixedPrizesInput, setFixedPrizesInput] = useState<string[]>(['']);
 
     useEffect(() => {
         fetchRule();
@@ -39,9 +37,7 @@ export default function EditRule() {
                 setName(rule.name);
                 setType(rule.type);
 
-                if (rule.type === 'equal_share') {
-                    setTotalPrize(rule.config.total_prize?.toString() || '');
-                } else if (rule.type === 'rank_kill') {
+                if (rule.type === 'rank_kill') {
                     setPerKill(rule.config.per_kill?.toString() || '');
                     const rewards = rule.config.rank_rewards || {};
                     const rewardRows = Object.entries(rewards).map(([rank, amount]) => ({
@@ -50,11 +46,6 @@ export default function EditRule() {
                     }));
                     if (rewardRows.length > 0) {
                         setRankRewardsInput(rewardRows);
-                    }
-                } else if (rule.type === 'fixed_list') {
-                    const prizes = rule.config.prizes || [];
-                    if (prizes.length > 0) {
-                        setFixedPrizesInput(prizes.map((p: number) => p.toString()));
                     }
                 }
             }
@@ -82,21 +73,7 @@ export default function EditRule() {
         setRankRewardsInput(newRows);
     };
 
-    const handleAddFixedRow = () => {
-        setFixedPrizesInput([...fixedPrizesInput, '']);
-    };
 
-    const handleUpdateFixedRow = (index: number, value: string) => {
-        const newRows = [...fixedPrizesInput];
-        newRows[index] = value;
-        setFixedPrizesInput(newRows);
-    };
-
-    const handleRemoveFixedRow = (index: number) => {
-        const newRows = [...fixedPrizesInput];
-        newRows.splice(index, 1);
-        setFixedPrizesInput(newRows);
-    };
 
     const handleSave = async () => {
         if (!name.trim()) {
@@ -106,14 +83,7 @@ export default function EditRule() {
 
         let config: any = {};
 
-        if (type === 'equal_share') {
-            if (!totalPrize || isNaN(Number(totalPrize))) {
-                Alert.alert('Error', 'Please enter a valid Total Prize amount');
-                return;
-            }
-            config = { total_prize: Number(totalPrize) };
-
-        } else if (type === 'rank_kill') {
+        if (type === 'rank_kill') {
             if (!perKill || isNaN(Number(perKill))) {
                 Alert.alert('Error', 'Please enter a valid Per Kill amount');
                 return;
@@ -125,17 +95,6 @@ export default function EditRule() {
                 }
             }
             config = { per_kill: Number(perKill), rank_rewards: rewards };
-
-        } else if (type === 'fixed_list') {
-            const prizes = fixedPrizesInput
-                .map(p => Number(p))
-                .filter(p => !isNaN(p) && p > 0);
-
-            if (prizes.length === 0) {
-                Alert.alert('Error', 'Please add at least one fixed prize');
-                return;
-            }
-            config = { prizes };
         }
 
         try {
@@ -229,18 +188,6 @@ export default function EditRule() {
                             icon="trophy"
                             onPress={() => setType('rank_kill')}
                         />
-                        <TypeOption
-                            selected={type === 'equal_share'}
-                            label="Equal Share"
-                            icon="people"
-                            onPress={() => setType('equal_share')}
-                        />
-                        <TypeOption
-                            selected={type === 'fixed_list'}
-                            label="Fixed List"
-                            icon="list"
-                            onPress={() => setType('fixed_list')}
-                        />
                     </View>
                 </View>
 
@@ -248,20 +195,7 @@ export default function EditRule() {
                 <View style={styles.configContainer}>
                     <Text style={styles.sectionTitle}>Configuration</Text>
 
-                    {type === 'equal_share' && (
-                        <View style={styles.group}>
-                            <Text style={styles.label}>Total Prize Pool (৳)</Text>
-                            <TextInput
-                                style={styles.input}
-                                placeholder="5000"
-                                keyboardType="numeric"
-                                value={totalPrize}
-                                onChangeText={setTotalPrize}
-                                placeholderTextColor={COLORS.textSecondary}
-                            />
-                            <Text style={styles.hint}>Split equally among all winners.</Text>
-                        </View>
-                    )}
+
 
                     {type === 'rank_kill' && (
                         <View style={{ gap: 16 }}>
@@ -313,30 +247,7 @@ export default function EditRule() {
                         </View>
                     )}
 
-                    {type === 'fixed_list' && (
-                        <View style={styles.group}>
-                            <Text style={styles.label}>Fixed Prizes (Top Ranks)</Text>
-                            {fixedPrizesInput.map((val, index) => (
-                                <View key={index} style={styles.rowInput}>
-                                    <Text style={[styles.miniLabel, { width: 60 }]}>Rank {index + 1}</Text>
-                                    <TextInput
-                                        style={[styles.input, { flex: 1 }]}
-                                        placeholder="Amount"
-                                        keyboardType="numeric"
-                                        value={val}
-                                        onChangeText={(t) => handleUpdateFixedRow(index, t)}
-                                    />
-                                    <TouchableOpacity onPress={() => handleRemoveFixedRow(index)}>
-                                        <Ionicons name="trash-outline" size={20} color={COLORS.error} />
-                                    </TouchableOpacity>
-                                </View>
-                            ))}
-                            <TouchableOpacity style={styles.addBtn} onPress={handleAddFixedRow}>
-                                <Ionicons name="add-circle-outline" size={20} color={COLORS.primary} />
-                                <Text style={styles.addBtnText}>Add Next Rank Prize</Text>
-                            </TouchableOpacity>
-                        </View>
-                    )}
+
                 </View>
 
                 <TouchableOpacity

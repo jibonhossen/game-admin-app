@@ -163,9 +163,6 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, onUpdate, onDelete 
                         </View>
                     )}
                 </View>
-                <View style={styles.priceBadge}>
-                    <Text style={styles.priceText}>৳{match.entryFee}</Text>
-                </View>
             </View>
 
             <View style={styles.divider} />
